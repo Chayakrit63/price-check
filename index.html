@@ -314,6 +314,8 @@ function candidates(raw){
   push(text);
   push(norm(text));
   try{push(decodeURIComponent(text));}catch(e){}
+  var head=text.split(/[+\s|;,]+/)[0];
+  if(head&&head!==text) push(head); // QR like "1110042+ 20/Nov/2025" -> SKU only
   var url=null;
   try{if(/^[a-z]+:\/\//i.test(text)) url=new URL(text);}catch(e){}
   if(url){
