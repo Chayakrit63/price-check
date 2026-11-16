@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="th"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#8b0f14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Price Check">
+<meta name="format-detection" content="telephone=no">
+<meta name="description" content="Fragrance Warehouse Sale — Price Check">
+<title>Price Check</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@500;600&family=Cormorant+Garamond:ital,wght@0,300;0,600;1,300;1,400&family=Prompt:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;font-variant-numeric:lining-nums;font-feature-settings:"lnum" 1;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#faf4ea;color:#2a1a17;font-family:Prompt,sans-serif;min-height:100svh}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.top{background:#8b0f14;color:#f1e3cf;text-align:center;padding:22px 16px 16px;padding-top:max(18px,env(safe-area-inset-top))}
+.top .b{font-family:"Cormorant Garamond",serif;font-style:italic;font-size:15px;letter-spacing:2px}
+.top .t{font-family:"Bodoni Moda",serif;font-size:22px;letter-spacing:3px;font-weight:600}
+.cam{margin:22px;height:330px;border-radius:20px;background:linear-gradient(160deg,#3b2f2c,#16100e);position:relative;overflow:hidden;transition:height .2s ease}
+#scan.typing .cam{height:132px}
+#scan.typing .cam-msg{padding:22px}
+#scan.typing .photo-hint,#scan.typing .live-link,#scan.typing .photo-err{display:none!important}
+#reader{position:absolute;inset:0;width:100%!important;height:100%!important}
+#reader video{width:100%!important;height:100%!important;object-fit:cover;border-radius:0}
+#reader canvas,#qr-shaded-region,#reader img{display:none!important}
+#file-reader{position:absolute;left:-9999px;top:0;width:64px;height:64px;overflow:hidden;opacity:0;pointer-events:none}
+.box{position:absolute;left:40px;right:40px;top:100px;height:130px;border:3px solid #d8c29c;border-radius:12px;pointer-events:none;z-index:2;visibility:hidden}
+.line{position:absolute;left:50px;right:50px;top:163px;height:3px;background:#c0262d;box-shadow:0 0 12px #c0262d;pointer-events:none;z-index:3;visibility:hidden}
+.cam.live .box,.cam.live .line,.cam.live .hint{visibility:visible}
+.cam.live .line{animation:laser 2.2s ease-in-out infinite}
+.torch{display:none;position:absolute;right:12px;top:12px;z-index:5;background:rgba(42,26,23,.55);color:#f1e3cf;border:1px solid #d8c29c;border-radius:22px;padding:8px 11px;font-size:16px;cursor:pointer;line-height:1}
+.cam.live .torch.show{display:block}
+.torch.on{background:#8b0f14;border-color:#8b0f14;color:#fff}
+.under-cam{display:none;text-align:center;margin:-6px 22px 4px}
+.under-cam.show{display:block}
+.under-cam .live-link{color:#8b0f14;text-decoration:none}
+@keyframes laser{0%,100%{top:112px;opacity:.8}50%{top:216px;opacity:1}}
+.hint{position:absolute;bottom:18px;width:100%;text-align:center;color:#f1e3cf;font-size:13px;font-weight:300;z-index:2;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.45);visibility:hidden}
+.cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px 22px;color:#f1e3cf;z-index:4;background:linear-gradient(160deg,#3b2f2c,#16100e)}
+.cam-msg.hidden{display:none}
+.cam-msg h3{font-family:"Bodoni Moda",serif;font-size:20px;margin:0 0 8px;font-weight:600}
+.cam-msg p{font-weight:300;font-size:13.5px;margin:0;line-height:1.55;color:#f1e3cf}
+.photo-hint{margin:0 0 18px;font-weight:300;font-size:13.5px;line-height:1.55;color:#f1e3cf}
+.photo-err{margin:0 0 16px;font-weight:400;font-size:14px;line-height:1.55;color:#f1e3cf}
+.shot{background:#8b0f14;color:#fff;border:0;border-radius:14px;padding:16px 16px;font:400 15.5px Prompt;cursor:pointer;width:100%;max-width:310px;box-shadow:0 8px 22px rgba(0,0,0,.35);line-height:1.35}
+.shot:disabled{opacity:.45;cursor:default}
+.live-link{margin-top:16px;background:none;border:0;color:#d8c29c;font:300 13px Prompt;cursor:pointer;text-decoration:underline;padding:6px 8px}
+.or{text-align:center;font-family:"Cormorant Garamond",serif;font-style:italic;color:#8b0f14;font-size:16px}
+.inwrap{margin:10px 22px 0;position:relative;z-index:8}
+.in{display:flex;gap:8px}
+.in input{flex:1;min-width:0;font:300 16px Prompt;padding:13px;border:1px solid #d8c29c;border-radius:12px;background:#fffdf9;color:#2a1a17;outline:none}
+.in input:focus{border-color:#8b0f14}
+.in button{background:#8b0f14;color:#fff;border:0;border-radius:12px;padding:0 18px;font:400 15px Prompt;cursor:pointer;white-space:nowrap}
+.in button:disabled{opacity:.45}
+.sug{position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fffdf9;border:1px solid #e3cfae;border-radius:16px;box-shadow:0 12px 30px rgba(80,30,20,.2);max-height:min(52vh,420px);overflow-y:auto;-webkit-overflow-scrolling:touch;z-index:30}
+.sug-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #f1e3cf;padding:12px 14px;min-height:68px;cursor:pointer;font:400 14px Prompt;color:#2a1a17}
+.sug-item:last-child{border-bottom:0}
+.sug-item:active,.sug-item.on{background:#faf4ea}
+.sug-top{display:flex;align-items:flex-start;gap:10px}
+.sug-copy{flex:1;min-width:0}
+.sug-brand{font-family:"Bodoni Moda",serif;color:#8b0f14;letter-spacing:1.6px;font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:3px}
+.sug-name{font-size:14.5px;color:#2a1a17;line-height:1.35}
+.sug-size{color:#8b0f14;font-size:12px;white-space:nowrap}
+.sug-price{flex:none;font-family:"Bodoni Moda",serif;color:#8b0f14;font-size:18px;font-weight:600;white-space:nowrap;padding-top:2px}
+.sug-price.ask{font-family:Prompt,sans-serif;font-size:12px;font-weight:400;letter-spacing:0;padding-top:6px}
+.sug-meta{margin-top:5px;font-size:11.5px;color:#9a8670;font-weight:300;word-break:break-all}
+.sug-meta b,.sug-name b,.sug-brand b{font-weight:600;color:#5a3a30;background:#f1e3cf;border-radius:3px;padding:0 2px}
+.sug-empty{padding:18px 14px;text-align:center;color:#9a8670;font-size:14px;font-weight:300}
+.foot{text-align:center;margin:16px 16px 24px}
+.cnt{color:#9a8670;font-size:11.5px;margin:0 0 8px;font-weight:300}
+.refresh{background:none;border:0;color:#8b0f14;font:300 12.5px Prompt;cursor:pointer;padding:4px 10px;border-radius:20px}
+.refresh:active{background:#f1e3cf}
+.refresh:disabled{opacity:.45;cursor:default}
+.ask{margin-top:22px;color:#8b0f14;font-size:15.5px;line-height:1.55;font-weight:400}
+.ask i{display:block;font-family:"Cormorant Garamond",serif;font-style:italic;font-size:18px;color:#5a3a30;margin-top:4px}
+.card{margin:22px;background:#fffdf9;border:1px solid #e3cfae;border-radius:22px;padding:24px 22px;text-align:center}
+.br{font-family:"Bodoni Moda",serif;color:#8b0f14;letter-spacing:4px;font-size:17px;font-weight:600}
+.nm{font-size:16px;margin:10px 0 4px;color:#2a1a17;line-height:1.4}
+.sz{display:inline-block;background:#f1e3cf;color:#8b0f14;border-radius:20px;padding:3px 14px;font-size:13px;margin-top:6px}
+.sz.hidden,.badge.hidden,.save.hidden{display:none}
+.badge{display:inline-block;margin-top:22px;background:#c0262d;color:#fff;font-family:"Bodoni Moda",serif;font-size:30px;font-weight:600;padding:6px 22px;border-radius:40px}
+.old{margin-top:18px;color:#9a8670;font-size:15px}
+.old s{color:#9a8670}
+.lbl{font-size:11px;letter-spacing:2px;color:#9a8670;margin-top:16px}
+.new{font-family:"Bodoni Moda",serif;color:#8b0f14;font-size:52px;font-weight:600;line-height:1}
+.new small{font-size:22px}
+.save{color:#2e7d32;font-size:14px;margin-top:8px}
+.meta{margin-top:18px;border-top:1px dashed #e3cfae;padding-top:12px;font-size:11.5px;color:#9a8670;font-weight:300;word-break:break-all}
+.btn{margin:0 22px 28px;background:#8b0f14;color:#fff;text-align:center;border-radius:14px;padding:15px;font:400 16px Prompt;border:0;width:calc(100% - 44px);cursor:pointer;display:block}
+.nf .mark{width:54px;height:54px;border:1.5px solid #d8c29c;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:4px auto 14px;font-family:"Bodoni Moda",serif;font-size:28px;color:#8b0f14;line-height:1}
+.nf .br{letter-spacing:2px}
+.nf .nm{color:#9a8670;font-family:"Cormorant Garamond",serif;font-style:italic;font-size:20px;margin:4px 0 16px}
+.nf-code{display:inline-block;background:#f1e3cf;color:#2a1a17;border-radius:12px;padding:8px 14px;font-size:14px;font-weight:400;word-break:break-all;max-width:100%}
+.nf-help{font-weight:300;font-size:13.5px;color:#5a3a30;line-height:1.55;margin:16px 0 4px}
+#scan.hidden,#out.hidden,#card-hit.hidden,#card-miss.hidden,#r-price.hidden,#r-ask.hidden,.hidden{display:none}
+.spin{width:28px;height:28px;border:2px solid rgba(241,227,207,.25);border-top-color:#d8c29c;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="top"><div class="b">Fragrance</div><div class="t">PRICE CHECK</div></div>
+
+<div id="scan">
+  <div class="cam" id="cam">
+    <div id="reader"></div>
+    <div class="box" id="box"></div>
+    <div class="line" id="line"></div>
+    <div class="hint" id="hint">วางบาร์โค้ดในกรอบ · Align barcode in frame</div>
+    <button type="button" class="torch" id="torch" aria-label="Torch">🔦</button>
+    <div class="cam-msg" id="cam-msg">
+      <div id="busy-ui">
+        <div class="spin" id="spin"></div>
+        <h3 id="msg-t">กำลังโหลดข้อมูลสินค้า</h3>
+        <p id="msg-p">Loading catalog…</p>
+      </div>
+      <div id="photo-ui" class="hidden">
+        <p class="photo-hint" id="photo-hint">จัดบาร์โค้ดให้อยู่กลางภาพ ถ่ายให้ชัด<br>Center the barcode and take a sharp photo</p>
+        <p class="photo-err hidden" id="photo-err">อ่านบาร์โค้ดไม่ได้ ลองถ่ายใกล้ๆ ให้ชัด หรือพิมพ์รหัส</p>
+        <button type="button" class="shot" id="shot" disabled>📷 ถ่ายรูปบาร์โค้ด · Scan barcode</button>
+        <button type="button" class="live-link" id="try-live">เปิดกล้องอีกครั้ง · Open camera</button>
+      </div>
+    </div>
+  </div>
+  <div class="under-cam" id="under-cam">
+    <button type="button" class="live-link" id="shot-mini">📷 ถ่ายรูปแทน · Use photo</button>
+  </div>
+  <input id="file" type="file" accept="image/*" capture="environment" tabindex="-1" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+  <div id="file-reader" aria-hidden="true"></div>
+  <div class="or">or type barcode / SKU</div>
+  <div class="inwrap" id="inwrap">
+    <div class="in">
+      <input id="q" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="บาร์โค้ด / SKU / ชื่อสินค้า" enterkeyhint="search" role="combobox" aria-autocomplete="list" aria-controls="sug" aria-expanded="false">
+      <button type="button" id="go">ค้นหา</button>
+    </div>
+    <div class="sug hidden" id="sug" role="listbox"></div>
+  </div>
+  <div class="foot">
+    <div class="cnt" id="cnt">กำลังโหลด… / Loading…</div>
+    <button type="button" class="refresh" id="reload" disabled>⟳ อัปเดตข้อมูล</button>
+  </div>
+</div>
+
+<div id="out" class="hidden">
+  <div class="card" id="card-hit">
+    <div class="br" id="r-brand"></div>
+    <div class="nm" id="r-name"></div>
+    <div class="sz" id="r-size"></div>
+    <div id="r-price">
+      <div><div class="badge" id="r-badge"></div></div>
+      <div class="old" id="r-old">ราคาปกติ <s id="r-rsp"></s></div>
+      <div class="lbl">SALE PRICE · ราคาพิเศษ</div>
+      <div class="new"><small>฿</small><span id="r-disc"></span></div>
+      <div class="save" id="r-save"></div>
+    </div>
+    <div class="ask hidden" id="r-ask">สอบถามหัวหน้างาน<i>Please ask supervisor</i></div>
+    <div class="meta" id="r-meta"></div>
+  </div>
+  <div class="card nf hidden" id="card-miss">
+    <div class="mark">×</div>
+    <div class="br">ไม่พบสินค้า</div>
+    <div class="nm">Not found</div>
+    <div class="nf-code" id="m-code"></div>
+    <p class="nf-help">กรุณาตรวจสอบกับหัวหน้างาน<br>Please check with a supervisor</p>
+  </div>
+  <button type="button" class="btn" id="next">📷 สแกนชิ้นต่อไป · Scan next</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
+<script>
+var SAMPLE = {updated:"16/11/2026",count:603,rows:[
+  ["L3720002","CACHAREL ANAIS ANAIS EDT 50ML","ANAIS ANAIS EDT","CACHAREL","50 ML",2500,800,0.68,"3360374507206","3360374507206"],
+  ["S0960303","RALPH LAUREN RALPH EDT 100ML FEMALE","RALPH EDT","RALPH LAUREN","100 ML",3550,1200,0.6619718309859155,"NOT FOUND",""]
+]};
+var INDEX = {};
+var META = {count:0,updated:"",loadedAt:null};
+var catLoaded = false;
+var reloading = false;
+var lastLoadedAt = 0;
+var scanner = null;
+var scanning = false;
+var starting = false;
+var lastKey = "";
+var lastAt = 0;
+var decoding = false;
+
+function $(id){return document.getElementById(id);}
+var API="https://script.google.com/macros/s/AKfycbwraU4L3FMUtv_AHniqAD9c9LMzPCIhIaMeieEAY1sGmTx9qignMBtoNAm1vkHtZEJ0ow/exec";
+var STORE="priceCheck.catalog.v1";
+var camOk=false;
+var camPaused=false;
+var torchOn=false;
+function readStore(){
+  try{
+    var s=localStorage.getItem(STORE);
+    if(!s) return null;
+    var d=JSON.parse(s);
+    if(d&&d.rows&&d.rows.length) return d;
+  }catch(e){}
+  return null;
+}
+function writeStore(data){
+  try{localStorage.setItem(STORE,JSON.stringify({count:data.count,rows:data.rows,updated:data.updated,saved:Date.now()}));}catch(e){}
+}
+function jsonpCatalog(){
+  return new Promise(function(resolve,reject){
+    var name="pcCb"+Date.now();
+    var s=document.createElement("script");
+    var t=setTimeout(function(){cleanup();reject(new Error("timeout"));},15000);
+    function cleanup(){clearTimeout(t);try{delete window[name];}catch(e){window[name]=undefined;}if(s.parentNode)s.parentNode.removeChild(s);}
+    window[name]=function(data){cleanup();resolve(data);};
+    s.onerror=function(){cleanup();reject(new Error("jsonp"));};
+    s.src=API+"?api=catalog&callback="+name;
+    document.head.appendChild(s);
+  });
+}
+function fetchCatalog(){
+  return fetch(API+"?api=catalog",{cache:"no-store",redirect:"follow"})
+    .then(function(r){if(!r.ok) throw new Error("http "+r.status);return r.json();})
+    .then(function(data){if(!data||!data.rows) throw new Error("bad catalog");return data;})
+    .catch(function(){return jsonpCatalog();});
+}
+function show(el, on){if(el) el.classList.toggle("hidden",!on);}
+function money(n){
+  var x=Math.round(Number(n)||0);
+  return x.toLocaleString("en-US");
+}
+function pctOf(row){
+  var p=row.pct;
+  if(p===""||p==null||typeof p==="undefined"){
+    return row.rsp>0?((row.rsp-row.disc)/row.rsp):0;
+  }
+  p=Number(p);
+  if(!isFinite(p)) return 0;
+  if(p>1) return p/100;
+  return p;
+}
+function unpack(a){
+  return {sku:a[0]||"",desc:a[1]||"",name:a[2]||a[1]||"",brand:a[3]||"",size:a[4]||"",rsp:Number(a[5])||0,disc:Number(a[6])||0,pct:a[7],barcode:a[8]||"",all:a[9]||""};
+}
+function norm(s){return String(s||"").trim().replace(/\s+/g,"");}
+function addKey(k,row){
+  k=norm(k).toUpperCase();
+  if(!k||k==="NOTFOUND"||k==="NOT_FOUND") return;
+  if(!INDEX[k]) INDEX[k]=row;
+}
+var CATALOG = [];
+function buildIndex(data){
+  INDEX={};
+  CATALOG=[];
+  META.count=data.count||(data.rows&&data.rows.length)||0;
+  META.updated=data.updated||"";
+  (data.rows||[]).forEach(function(a){
+    var row=unpack(a);
+    CATALOG.push(row);
+    addKey(row.sku,row);
+    var all=String(row.all||"").split(",");
+    all.push(row.barcode);
+    all.forEach(function(b){addKey(b,row);});
+  });
+}
+function variants(code){
+  var c=norm(code);
+  if(!c) return [];
+  var out=[c];
+  if(/^\d{12}$/.test(c)) out.push("0"+c);
+  if(/^\d{13}$/.test(c)&&c.charAt(0)==="0") out.push(c.slice(1));
+  var seen={}, list=[];
+  out.forEach(function(v){var k=v.toUpperCase();if(!seen[k]){seen[k]=1;list.push(v);}});
+  return list;
+}
+function findExact(code){
+  var list=variants(code);
+  for(var i=0;i<list.length;i++){
+    var hit=INDEX[list[i].toUpperCase()];
+    if(hit) return hit;
+  }
+  return null;
+}
+function skuToken(tok){
+  tok=String(tok||"").trim();
+  if(!/^[A-Za-z0-9][A-Za-z0-9\-]{3,19}$/.test(tok)) return false;
+  if(!/[A-Za-z]/.test(tok)) return false;
+  return true;
+}
+function candidates(raw){
+  var text=String(raw||"").trim();
+  var out=[], seen={};
+  function push(v){
+    v=String(v||"").trim();
+    if(!v) return;
+    var k=norm(v).toUpperCase();
+    if(seen[k]) return;
+    seen[k]=1; out.push(v);
+  }
+  push(text);
+  push(norm(text));
+  try{push(decodeURIComponent(text));}catch(e){}
+  var url=null;
+  try{if(/^[a-z]+:\/\//i.test(text)) url=new URL(text);}catch(e){}
+  if(url){
+    push(url.searchParams.get("sku"));
+    push(url.searchParams.get("barcode"));
+    push(url.searchParams.get("ean"));
+    push(url.searchParams.get("gtin"));
+    push(url.searchParams.get("id"));
+    push(url.searchParams.get("p"));
+    push(url.searchParams.get("q"));
+    var parts=url.pathname.split("/");
+    push(parts[parts.length-1]);
+  }
+  var longRuns=String(text).match(/\d{15,}/g)||[];
+  longRuns.forEach(function(run){
+    push(run.slice(0,13)); push(run.slice(-13));
+    push(run.slice(0,12)); push(run.slice(-12));
+    push(run.slice(0,14)); push(run.slice(-14));
+  });
+  var runs=String(text).match(/\d{8,14}/g)||[];
+  runs.sort(function(a,b){return b.length-a.length;});
+  runs.forEach(push);
+  String(text).split(/[^A-Za-z0-9\-]+/).forEach(function(tok){
+    if(skuToken(tok)) push(tok);
+  });
+  return out;
+}
+function lookup(raw){
+  var list=candidates(raw);
+  for(var i=0;i<list.length;i++){
+    var hit=findExact(list[i]);
+    if(hit) return hit;
+  }
+  return null;
+}
+function pad(n){return (n<10?"0":"")+n;}
+function formatLoadTime(d){
+  return pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear()+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+}
+function setFooter(){
+  var n=META.count||0;
+  var d=META.loadedAt?formatLoadTime(META.loadedAt):"";
+  $("cnt").textContent=d?("ข้อมูลสินค้า "+n.toLocaleString("en-US")+" รายการ · อัปเดต "+d):("ข้อมูลสินค้า "+n.toLocaleString("en-US")+" รายการ");
+}
+function setReloading(on){
+  reloading=on;
+  var b=$("reload");
+  if(!b) return;
+  b.disabled=!!on || !catLoaded;
+  b.textContent=on?"⟳ กำลังอัปเดต…":"⟳ อัปเดตข้อมูล";
+}
+function vibrate(){try{if(navigator.vibrate) navigator.vibrate(80);}catch(e){}}
+function beep(){
+  try{
+    var Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx) return;
+    var ctx=beep.ctx||(beep.ctx=new Ctx());
+    if(ctx.state==="suspended") ctx.resume();
+    var osc=ctx.createOscillator();
+    var g=ctx.createGain();
+    osc.type="sine";
+    osc.frequency.value=880;
+    g.gain.value=0.09;
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.12);
+    osc.stop(ctx.currentTime+0.13);
+  }catch(e){}
+}
+function logScan(code, sku){
+  var url=API+"?api=log&barcode="+encodeURIComponent(code||"")+"&found="+encodeURIComponent(sku||"");
+  try{if(navigator.sendBeacon&&navigator.sendBeacon(url)) return;}catch(e){}
+  try{fetch(url,{mode:"no-cors",keepalive:true,method:"GET"}).catch(function(){});return;}catch(e){}
+  try{var img=new Image();img.src=url;}catch(e2){}
+}
+function formats(){
+  var F=window.Html5QrcodeSupportedFormats;
+  if(!F) return undefined;
+  return [F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.QR_CODE,F.DATA_MATRIX];
+}
+function ensureLib(){
+  return new Promise(function(resolve, reject){
+    if(window.Html5Qrcode){resolve();return;}
+    var s=document.createElement("script");
+    s.src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    s.onload=function(){window.Html5Qrcode?resolve():reject(new Error("lib"));};
+    s.onerror=function(){reject(new Error("lib"));};
+    document.head.appendChild(s);
+  });
+}
+
+function showBusy(title, body){
+  $("cam").classList.remove("live");
+  if($("under-cam")) $("under-cam").classList.remove("show");
+  if(typeof hideTorch==="function") hideTorch();
+  show($("cam-msg"),true);
+  show($("busy-ui"),true);
+  show($("photo-ui"),false);
+  $("spin").style.display="block";
+  $("msg-t").textContent=title||"";
+  $("msg-p").textContent=body||"";
+}
+
+function loadImage(file){
+  return new Promise(function(resolve, reject){
+    var url=URL.createObjectURL(file);
+    var img=new Image();
+    img.onload=function(){URL.revokeObjectURL(url);resolve(img);};
+    img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("image"));};
+    img.src=url;
+  });
+}
+function canvasToFile(canvas, name){
+  return new Promise(function(resolve, reject){
+    function toFile(blob){
+      if(!blob){reject(new Error("blob"));return;}
+      try{resolve(new File([blob], name||"scan.jpg", {type:"image/jpeg"}));}
+      catch(e){resolve(blob);}
+    }
+    if(canvas.toBlob){
+      canvas.toBlob(toFile, "image/jpeg", 0.92);
+    }else{
+      var data=canvas.toDataURL("image/jpeg", 0.92);
+      var m=data.split(",");
+      var b=atob(m[1]||"");
+      var arr=new Uint8Array(b.length);
+      for(var i=0;i<b.length;i++) arr[i]=b.charCodeAt(i);
+      toFile(new Blob([arr],{type:"image/jpeg"}));
+    }
+  });
+}
+function drawToFile(img, sx, sy, sw, sh, dw, dh, rotate90, name){
+  var c=document.createElement("canvas");
+  if(rotate90){c.width=dh;c.height=dw;}
+  else{c.width=dw;c.height=dh;}
+  var ctx=c.getContext("2d");
+  if(rotate90){ctx.translate(dh,0);ctx.rotate(Math.PI/2);}
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+  return canvasToFile(c, name);
+}
+function downscaleFile(file, maxSide){
+  return loadImage(file).then(function(img){
+    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    var long=Math.max(w,h)||1;
+    if(long<=maxSide) return file;
+    var scale=maxSide/long;
+    var dw=Math.max(1,Math.round(w*scale)), dh=Math.max(1,Math.round(h*scale));
+    return drawToFile(img, 0, 0, w, h, dw, dh, false, "scan.jpg");
+  });
+}
+function centerCropFile(file){
+  return loadImage(file).then(function(img){
+    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    var cw=Math.max(1,Math.round(w*0.7)), ch=Math.max(1,Math.round(h*0.7));
+    var x=Math.round((w-cw)/2), y=Math.round((h-ch)/2);
+    return drawToFile(img, x, y, cw, ch, cw, ch, false, "crop.jpg");
+  });
+}
+function rotate90File(file){
+  return loadImage(file).then(function(img){
+    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    return drawToFile(img, 0, 0, w, h, w, h, true, "rot.jpg");
+  });
+}
+function scanFileOnce(file){
+  return ensureLib().then(function(){
+    var holder=$("file-reader");
+    holder.innerHTML="";
+    var qr=new Html5Qrcode("file-reader", {formatsToSupport:formats(), verbose:false});
+    return qr.scanFile(file, false).then(function(text){
+      try{qr.clear();}catch(e){}
+      holder.innerHTML="";
+      return text;
+    }, function(){
+      try{qr.clear();}catch(e){}
+      holder.innerHTML="";
+      return "";
+    });
+  });
+}
+function decodeImage(file){
+  if(!file) return Promise.resolve("");
+  return downscaleFile(file, 1600).then(function(prepared){
+    return scanFileOnce(prepared).then(function(text){
+      if(text) return text;
+      return centerCropFile(prepared).then(function(crop){
+        return scanFileOnce(crop);
+      }).then(function(text){
+        if(text) return text;
+        return rotate90File(prepared).then(function(rot){
+          return scanFileOnce(rot);
+        });
+      });
+    });
+  }).catch(function(){return "";});
+}
+function applyDecoded(text){
+  var now=Date.now();
+  var key=norm(text).toUpperCase();
+  if(key&&key===lastKey&&now-lastAt<2000) return;
+  lastKey=key; lastAt=now;
+  vibrate(); beep();
+  var hit=lookup(text);
+  if(hit) showResult(hit, text);
+  else showNotFound(text);
+  logScan(text, hit?hit.sku:"");
+}
+function onPhotoFile(ev){
+  var file=ev.target.files&&ev.target.files[0];
+  ev.target.value="";
+  if(!file||decoding) return;
+  decoding=true;
+  showBusy("กำลังอ่านบาร์โค้ด…","");
+  decodeImage(file).then(function(text){
+    decoding=false;
+    if(text) applyDecoded(text);
+    else showPhotoUi("อ่านบาร์โค้ดไม่ได้ ลองถ่ายใกล้ๆ ให้ชัด หรือพิมพ์รหัส");
+  }, function(){
+    decoding=false;
+    showPhotoUi("อ่านบาร์โค้ดไม่ได้ ลองถ่ายใกล้ๆ ให้ชัด หรือพิมพ์รหัส");
+  });
+}
+function openCapture(){
+  var f=$("file");
+  if(!f) return;
+  f.value="";
+  f.click();
+}
+
+function pickRear(cams){
+  if(!cams||!cams.length) return null;
+  var re=/back|rear|environment|หลัง|ท้าย|world/i;
+  for(var i=0;i<cams.length;i++) if(re.test(cams[i].label||"")) return cams[i].id;
+  return cams.length>1?cams[cams.length-1].id:cams[0].id;
+}
+function hideTorch(){var b=$("torch");if(b){b.classList.remove("show");b.classList.remove("on");}torchOn=false;}
+function setupTorch(){
+  hideTorch();
+  try{
+    var caps=scanner&&scanner.getRunningTrackCapabilities&&scanner.getRunningTrackCapabilities();
+    if(caps&&caps.torch) $("torch").classList.add("show");
+  }catch(e){}
+}
+function toggleTorch(){
+  if(!scanner||!scanning) return;
+  var next=!torchOn;
+  var apply=scanner.applyVideoConstraints({advanced:[{torch:next}]});
+  Promise.resolve(apply).then(function(){
+    torchOn=next;
+    $("torch").classList.toggle("on",torchOn);
+  }).catch(function(){});
+}
+function camLive(){
+  show($("cam-msg"),false);
+  $("cam").classList.add("live");
+  $("under-cam").classList.add("show");
+  setupTorch();
+}
+function showPhotoUi(err){
+  $("cam").classList.remove("live");
+  $("under-cam").classList.remove("show");
+  hideTorch();
+  show($("cam-msg"),true);
+  show($("busy-ui"),false);
+  show($("photo-ui"),true);
+  $("shot").disabled=!catLoaded;
+  if(err){
+    show($("photo-hint"),false);
+    $("photo-err").textContent=err;
+    show($("photo-err"),true);
+  }else{
+    show($("photo-err"),false);
+    show($("photo-hint"),true);
+  }
+}
+function stopCam(){
+  $("cam").classList.remove("live");
+  hideTorch();
+  camPaused=false;
+  if(!scanner){scanning=false;starting=false;return Promise.resolve();}
+  var s=scanner;
+  scanning=false;
+  starting=false;
+  return s.stop().then(function(){return s.clear();}).catch(function(){}).then(function(){
+    if(scanner===s) scanner=null;
+  });
+}
+function pauseCam(){
+  $("cam").classList.remove("live");
+  hideTorch();
+  scanning=false;
+  try{
+    if(scanner&&scanner.pause){scanner.pause(true);camPaused=true;return;}
+  }catch(e){}
+  camPaused=false;
+  stopCam();
+}
+function resumeCam(){
+  show($("out"),false);
+  show($("scan"),true);
+  setTyping(false);
+  if(camPaused&&scanner&&scanner.resume){
+    try{
+      scanner.resume();
+      scanning=true;
+      camPaused=false;
+      camOk=true;
+      camLive();
+      return;
+    }catch(e){}
+  }
+  startCam();
+}
+function camConfig(){
+  return {
+    fps:12,
+    qrbox:function(w,h){return {width:Math.max(220,Math.floor(w*0.86)),height:Math.max(90,Math.floor(Math.min(150,h*0.36)))};},
+    experimentalFeatures:{useBarCodeDetectorIfSupported:true},
+    rememberLastUsedCamera:true,
+    videoConstraints:{facingMode:{ideal:"environment"},focusMode:"continuous",width:{ideal:1920},height:{ideal:1080}}
+  };
+}
+function startCam(){
+  if(starting||scanning) return;
+  starting=true;
+  camPaused=false;
+  showBusy("กำลังเปิดกล้อง","Opening camera…");
+  ensureLib().then(function(){
+    return stopCam();
+  }).then(function(){
+    starting=true;
+    $("reader").innerHTML="";
+    scanner=new Html5Qrcode("reader",{formatsToSupport:formats(),verbose:false});
+    var cfg=camConfig();
+    function tryId(id){return scanner.start(id,cfg,onScan,function(){});}
+    return Html5Qrcode.getCameras().then(function(cams){
+      var id=pickRear(cams);
+      if(id) return tryId(id);
+      return tryId({facingMode:{ideal:"environment"},focusMode:"continuous"});
+    }).catch(function(){
+      return tryId({facingMode:{ideal:"environment"},focusMode:"continuous"});
+    });
+  }).then(function(){
+    starting=false; scanning=true; camOk=true; camLive();
+  }).catch(function(err){
+    starting=false; scanning=false; camOk=false;
+    var msg=String((err&&(err.message||err.name))||err||"");
+    var low=msg.toLowerCase();
+    var text="เปิดกล้องไม่ได้ ใช้ปุ่มถ่ายรูปได้เลย / Camera failed — use the photo button.";
+    if(/notallowed|permission|denied/i.test(low)) text="ไม่ได้รับสิทธิ์ใช้กล้อง · Camera permission denied. ใช้ปุ่มถ่ายรูป หรืออนุญาตกล้องแล้วกดเปิดกล้องอีกครั้ง";
+    stopCam().then(function(){ showPhotoUi(text); });
+  });
+}
+function onScan(text){
+  var now=Date.now();
+  var key=norm(text).toUpperCase();
+  if(key&&key===lastKey&&now-lastAt<2000) return;
+  lastKey=key; lastAt=now;
+  if(!scanning) return;
+  scanning=false;
+  pauseCam();
+  applyDecoded(text);
+}
+function showScan(){
+  show($("out"),false);
+  show($("scan"),true);
+  if(camOk) resumeCam();
+  else showPhotoUi();
+}
+function showResult(row, scanned){
+  show($("scan"),false);
+  show($("out"),true);
+  show($("card-hit"),true);
+  show($("card-miss"),false);
+  $("r-brand").textContent=row.brand||"";
+  $("r-name").textContent=row.name||row.desc||"";
+  if(row.size){$("r-size").textContent=row.size;show($("r-size"),true);}
+  else show($("r-size"),false);
+  var noPrice=!(Number(row.rsp)>0)||!(Number(row.disc)>0);
+  show($("r-price"),!noPrice);
+  show($("r-ask"),noPrice);
+  if(!noPrice){
+    var p=pctOf(row);
+    var pctShow=Math.round(p*100);
+    if(row.disc<row.rsp&&pctShow>0){
+      $("r-badge").textContent="−"+pctShow+"%";
+      show($("r-badge"),true);
+    }else show($("r-badge"),false);
+    $("r-rsp").textContent="฿"+money(row.rsp);
+    $("r-disc").textContent=money(row.disc);
+    var saved=row.rsp-row.disc;
+    if(saved>0){$("r-save").textContent="ประหยัด ฿"+money(saved);show($("r-save"),true);}
+    else show($("r-save"),false);
+  }
+  var bc=row.barcode&&row.barcode.toUpperCase()!=="NOT FOUND"?row.barcode:"—";
+  $("r-meta").textContent="SKU "+row.sku+" · Barcode "+bc;
+  window.scrollTo(0,0);
+}
+function showNotFound(code){
+  show($("scan"),false);
+  show($("out"),true);
+  show($("card-hit"),false);
+  show($("card-miss"),true);
+  $("m-code").textContent=String(code||"").trim()||"—";
+  window.scrollTo(0,0);
+}
+function barcodesOf(row){
+  var list=[], seen={};
+  function add(b){
+    b=norm(b);
+    if(!b||b.toUpperCase()==="NOTFOUND") return;
+    var k=b.toUpperCase();
+    if(seen[k]) return;
+    seen[k]=1; list.push(b);
+  }
+  add(row.barcode);
+  String(row.all||"").split(",").forEach(add);
+  return list;
+}
+function highlight(text, q){
+  var s=String(text==null?"":text), needle=String(q||"").trim();
+  if(!needle) return esc(s);
+  var ix=s.toLowerCase().indexOf(needle.toLowerCase());
+  if(ix<0) return esc(s);
+  return esc(s.slice(0,ix))+"<b>"+esc(s.slice(ix,ix+needle.length))+"</b>"+esc(s.slice(ix+needle.length));
+}
+function suggest(q){
+  q=String(q||"").trim();
+  if(q.length<2||!CATALOG.length) return [];
+  var qn=norm(q).toUpperCase();
+  var words=q.toLowerCase().split(/\s+/).filter(Boolean);
+  var hits=[];
+  for(var i=0;i<CATALOG.length;i++){
+    var row=CATALOG[i];
+    var skuU=String(row.sku||"").toUpperCase();
+    var bcs=barcodesOf(row);
+    var rank=99, field="", value="";
+    if(skuU&&skuU===qn){rank=0;field="sku";value=row.sku;}
+    var j;
+    for(j=0;j<bcs.length;j++){
+      if(bcs[j].toUpperCase()===qn){rank=0;field="bc";value=bcs[j];break;}
+    }
+    if(rank>1){
+      if(skuU.indexOf(qn)===0){rank=1;field="sku";value=row.sku;}
+      for(j=0;j<bcs.length;j++){
+        if(bcs[j].toUpperCase().indexOf(qn)===0){rank=1;field="bc";value=bcs[j];break;}
+      }
+    }
+    if(rank>2&&qn.length>=2){
+      if(skuU.length>=qn.length&&skuU.slice(-qn.length)===qn){rank=2;field="sku";value=row.sku;}
+      for(j=0;j<bcs.length;j++){
+        var bu=bcs[j].toUpperCase();
+        if(bu.length>=qn.length&&bu.slice(-qn.length)===qn){rank=2;field="bc";value=bcs[j];break;}
+      }
+    }
+    if(rank>3){
+      if(skuU.indexOf(qn)>=0){rank=3;field="sku";value=row.sku;}
+      for(j=0;j<bcs.length;j++){
+        if(bcs[j].toUpperCase().indexOf(qn)>=0){rank=3;field="bc";value=bcs[j];break;}
+      }
+    }
+    if(rank>4&&words.length){
+      var text=((row.name||"")+" "+(row.desc||"")+" "+(row.brand||"")).toLowerCase();
+      var all=true;
+      for(var w=0;w<words.length;w++) if(text.indexOf(words[w])<0){all=false;break;}
+      if(all){rank=4;field="text";value="";}
+    }
+    if(rank<99) hits.push({row:row,rank:rank,field:field,value:value});
+  }
+  hits.sort(function(a,b){
+    if(a.rank!==b.rank) return a.rank-b.rank;
+    var an=(a.row.name||"").toLowerCase(), bn=(b.row.name||"").toLowerCase();
+    if(an<bn) return -1; if(an>bn) return 1;
+    return String(a.row.sku).localeCompare(String(b.row.sku));
+  });
+  return hits.slice(0,8);
+}
+var SUGS=[];
+var sugTimer=null;
+var sugIndex=-1;
+function setTyping(on){
+  var scan=$("scan");
+  if(scan) scan.classList.toggle("typing",!!on);
+  if(on) setTimeout(placeSug, 80);
+}
+function hideSug(){
+  var box=$("sug");
+  if(!box) return;
+  show(box,false);
+  box.innerHTML="";
+  SUGS=[];
+  sugIndex=-1;
+  var qel=$("q");
+  if(qel) qel.setAttribute("aria-expanded","false");
+  if(qel&&document.activeElement!==qel) setTyping(false);
+}
+function placeSug(){
+  var box=$("sug");
+  if(!box||box.classList.contains("hidden")) return;
+  var input=$("q");
+  var r=input.getBoundingClientRect();
+  var vv=window.visualViewport;
+  var vh=vv?vv.height:window.innerHeight;
+  var top=vv&&vv.offsetTop?vv.offsetTop:0;
+  var spaceBelow=vh+top-r.bottom-8;
+  var spaceAbove=r.top-top-8;
+  if(spaceBelow<140&&spaceAbove>spaceBelow){
+    box.style.top="auto";
+    box.style.bottom="100%";
+    box.style.marginTop="0";
+    box.style.marginBottom="6px";
+    box.style.maxHeight=Math.max(120,Math.floor(spaceAbove))+"px";
+  }else{
+    box.style.top="100%";
+    box.style.bottom="auto";
+    box.style.marginTop="6px";
+    box.style.marginBottom="0";
+    box.style.maxHeight=Math.max(120,Math.floor(Math.min(spaceBelow,420)))+"px";
+  }
+}
+function renderSug(q){
+  var box=$("sug");
+  box.innerHTML="";
+  if(!SUGS.length){
+    var empty=document.createElement("div");
+    empty.className="sug-empty";
+    empty.textContent="ไม่พบรายการ";
+    box.appendChild(empty);
+  }else{
+    SUGS.forEach(function(hit, i){
+      var row=hit.row;
+      var btn=document.createElement("button");
+      btn.type="button";
+      btn.className="sug-item"+(i===sugIndex?" on":"");
+      btn.setAttribute("role","option");
+      var noPrice=!(Number(row.rsp)>0)||!(Number(row.disc)>0);
+      var price=noPrice?"สอบถาม":("฿"+money(row.disc));
+      var bc=row.barcode&&String(row.barcode).toUpperCase()!=="NOT FOUND"?row.barcode:"—";
+      var size=row.size?(' <span class="sug-size">'+highlight(row.size,q)+"</span>"):"";
+      btn.innerHTML='<div class="sug-top"><div class="sug-copy"><div class="sug-brand">'+highlight(row.brand||"",q)+'</div><div class="sug-name">'+highlight(row.name||row.desc||"",q)+size+"</div></div>"+
+        '<div class="sug-price'+(noPrice?" ask":"")+'">'+esc(price)+"</div></div>"+
+        '<div class="sug-meta">'+highlight(row.sku||"",q)+" · "+highlight(bc,q)+"</div>";
+      btn.addEventListener("mousedown",function(e){e.preventDefault();});
+      btn.addEventListener("click",function(e){e.preventDefault();pickSug(row);});
+      box.appendChild(btn);
+    });
+  }
+  show(box,true);
+  $("q").setAttribute("aria-expanded","true");
+  placeSug();
+}
+function pickSug(row){
+  var q=$("q").value.trim();
+  hideSug();
+  showResult(row, q||row.sku);
+  logScan(q||row.sku, row.sku);
+  stopCam();
+}
+function runSuggest(){
+  var q=$("q").value.trim();
+  if(q.length<2){hideSug();return;}
+  SUGS=suggest(q);
+  sugIndex=SUGS.length?0:-1;
+  renderSug(q);
+}
+function onQueryInput(){
+  if(sugTimer) clearTimeout(sugTimer);
+  sugTimer=setTimeout(runSuggest, 120);
+}
+function searchManual(){
+  var q=$("q").value.trim();
+  if(!q){$("q").focus();return;}
+  var hit=lookup(q);
+  if(!hit&&SUGS.length) hit=SUGS[0].row;
+  if(!hit){
+    var list=suggest(q);
+    if(list.length) hit=list[0].row;
+  }
+  hideSug();
+  if(hit) showResult(hit,q);
+  else showNotFound(q);
+  logScan(q, hit?hit.sku:"");
+  stopCam();
+}
+function onCat(data){
+  buildIndex(data||SAMPLE);
+  META.loadedAt=new Date();
+  lastLoadedAt=Date.now();
+  catLoaded=true;
+  setReloading(false);
+  setFooter();
+  $("shot").disabled=false;
+  var prev=(/preview=([a-z]+)/.exec(location.search||"")||[])[1];
+  if(prev==="result"){
+    var row=INDEX["L3720002"]||INDEX["3360374507206"]||unpack(SAMPLE.rows[0]);
+    showResult(row,row.barcode);
+    return;
+  }
+  if(prev==="notfound"){showNotFound("0000000000000");return;}
+  if(prev==="ask"){
+    showResult({sku:"740246",desc:"EKW EDC TISSUES (PACK OF 10'S)",name:"EDC TISSUES (PACK OF 10'S)",brand:"4711",size:"",rsp:110,disc:0,pct:1,barcode:"4011700740246",all:"4011700740246"},"4011700740246");
+    return;
+  }
+  if(prev==="live"){
+    onCat.started=true;
+    camLive();
+    $("torch").classList.add("show");
+    return;
+  }
+  if(onCat.started) return;
+  onCat.started=true;
+  startCam();
+}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+function onCatFail(err){
+  setReloading(false);
+  var m=(err&&err.message)||String(err||"โหลดข้อมูลไม่สำเร็จ / Could not load catalog");
+  if(catLoaded){
+    $("cnt").textContent=$("cnt").textContent+" · อัปเดตไม่สำเร็จ";
+    return;
+  }
+  $("cnt").textContent=m;
+  showBusy("โหลดข้อมูลไม่สำเร็จ", m);
+}
+function loadCatalog(){
+  var cached=readStore();
+  if(cached) onCat(cached);
+  setReloading(true);
+  fetchCatalog().then(function(data){
+    if(data&&data.error&&!(data.rows&&data.rows.length)) throw new Error(data.error);
+    writeStore(data);
+    onCat(data);
+  }, function(err){
+    if(cached){setReloading(false);return;}
+    onCatFail(err);
+  });
+}
+function reloadCatalog(){
+  if(reloading) return;
+  setReloading(true);
+  fetchCatalog().then(function(data){
+    if(data&&data.error&&!(data.rows&&data.rows.length)) throw new Error(data.error);
+    writeStore(data);
+    onCat(data);
+  }, onCatFail);
+}
+$("go").onclick=searchManual;
+$("q").addEventListener("input",onQueryInput);
+$("q").addEventListener("focus",function(){
+  setTyping(true);
+  if($("q").value.trim().length>=2) runSuggest();
+  setTimeout(function(){
+    try{$("inwrap").scrollIntoView({block:"start",behavior:"smooth"});}catch(e){}
+    placeSug();
+  },240);
+});
+$("q").addEventListener("blur",function(){
+  setTimeout(function(){
+    if(document.activeElement!==$("q")&&$("sug").classList.contains("hidden")) setTyping(false);
+  },200);
+});
+$("q").addEventListener("keydown",function(e){
+  if(e.key==="Escape"){hideSug();return;}
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+    if($("sug").classList.contains("hidden")&&$("q").value.trim().length>=2) runSuggest();
+    if(!SUGS.length) return;
+    e.preventDefault();
+    if(e.key==="ArrowDown") sugIndex=Math.min(SUGS.length-1,sugIndex+1);
+    else sugIndex=Math.max(0,sugIndex-1);
+    renderSug($("q").value.trim());
+    var on=$("sug").querySelector(".sug-item.on");
+    if(on) on.scrollIntoView({block:"nearest"});
+    return;
+  }
+  if(e.key==="Enter"){e.preventDefault();searchManual();}
+});
+document.addEventListener("mousedown",function(e){
+  var wrap=$("inwrap");
+  if(wrap&&!wrap.contains(e.target)) hideSug();
+}, true);
+document.addEventListener("touchstart",function(e){
+  var wrap=$("inwrap");
+  if(wrap&&!wrap.contains(e.target)) hideSug();
+}, true);
+if(window.visualViewport){
+  visualViewport.addEventListener("resize",placeSug);
+  visualViewport.addEventListener("scroll",placeSug);
+}
+$("shot").onclick=function(){hideSug();openCapture();};
+if($("shot-mini")) $("shot-mini").onclick=function(){hideSug();openCapture();};
+$("file").addEventListener("change", onPhotoFile);
+$("try-live").onclick=function(){hideSug();startCam();};
+if($("torch")) $("torch").onclick=function(){toggleTorch();};
+$("next").onclick=function(){
+  hideSug();
+  showScan();
+};
+$("reload").onclick=reloadCatalog;
+setInterval(function(){if(catLoaded) reloadCatalog();},10*60*1000);
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState!=="visible") return;
+  if(lastLoadedAt&&Date.now()-lastLoadedAt>5*60*1000) reloadCatalog();
+  if(!$("scan").classList.contains("hidden")&&camOk&&!scanning&&!starting&&!decoding) resumeCam();
+});
+window.__pc={lookup:lookup,showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
+loadCatalog();
+</script>
+</body></html>
