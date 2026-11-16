@@ -26,8 +26,8 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 #reader video{width:100%!important;height:100%!important;object-fit:cover;border-radius:0}
 #reader canvas,#qr-shaded-region,#reader img{display:none!important}
 #file-reader{position:absolute;left:-9999px;top:0;width:64px;height:64px;overflow:hidden;opacity:0;pointer-events:none}
-.box{position:absolute;left:40px;right:40px;top:100px;height:130px;border:3px solid #d8c29c;border-radius:12px;pointer-events:none;z-index:2;visibility:hidden}
-.line{position:absolute;left:50px;right:50px;top:163px;height:3px;background:#c0262d;box-shadow:0 0 12px #c0262d;pointer-events:none;z-index:3;visibility:hidden}
+.box{position:absolute;left:30px;right:30px;top:91px;height:148px;border:3px solid #d8c29c;border-radius:12px;pointer-events:none;z-index:2;visibility:hidden}
+.line{position:absolute;left:40px;right:40px;top:163px;height:3px;background:#c0262d;box-shadow:0 0 12px #c0262d;pointer-events:none;z-index:3;visibility:hidden}
 .cam.live .box,.cam.live .line,.cam.live .hint{visibility:visible}
 .cam.live .line{animation:laser 2.2s ease-in-out infinite}
 .camctl{position:absolute;right:12px;top:12px;z-index:5;display:flex;gap:8px}
@@ -41,7 +41,7 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 .under-cam{display:none;text-align:center;margin:-6px 22px 4px}
 .under-cam.show{display:block}
 .under-cam .live-link{color:#8b0f14;text-decoration:none}
-@keyframes laser{0%,100%{top:112px;opacity:.8}50%{top:216px;opacity:1}}
+@keyframes laser{0%,100%{top:102px;opacity:.8}50%{top:226px;opacity:1}}
 .hint{position:absolute;bottom:18px;width:100%;text-align:center;color:#f1e3cf;font-size:13px;font-weight:300;z-index:2;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.45);visibility:hidden}
 .cam-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px 22px;color:#f1e3cf;z-index:4;background:linear-gradient(160deg,#3b2f2c,#16100e)}
 .cam-msg.hidden{display:none}
@@ -511,10 +511,7 @@ function decodeImage(file){
   }).catch(function(){return "";});
 }
 function applyDecoded(text){
-  var now=Date.now();
-  var key=norm(text).toUpperCase();
-  if(key&&key===lastKey&&now-lastAt<2000) return;
-  lastKey=key; lastAt=now;
+  lastKey=norm(text).toUpperCase(); lastAt=Date.now();
   vibrate(); beep();
   var hit=lookup(text);
   if(hit) showResult(hit, text);
@@ -655,6 +652,67 @@ function tuneCam(){
   }).catch(function(){setupCamSwitch();});
 }
 function hideTorch(){var b=$("torch");if(b){b.classList.remove("show");b.classList.remove("on");}torchOn=false;var z=$("zoom");if(z)z.classList.remove("show");var w=$("camsw");if(w)w.classList.remove("show");}
+var loopTimer=0, loopBusy=false, nativeDet=null, nativeTried=false, loopCanvas=null;
+var NATIVE_FMTS=["ean_13","ean_8","upc_a","upc_e","code_128","qr_code","data_matrix"];
+function getNativeDetector(){
+  if(nativeTried) return Promise.resolve(nativeDet);
+  nativeTried=true;
+  if(!("BarcodeDetector" in window)) return Promise.resolve(null);
+  var mk=function(list){try{nativeDet=new window.BarcodeDetector({formats:list});}catch(e){nativeDet=null;}return nativeDet;};
+  try{
+    if(window.BarcodeDetector.getSupportedFormats){
+      return window.BarcodeDetector.getSupportedFormats().then(function(sup){
+        var list=NATIVE_FMTS.filter(function(f){return sup.indexOf(f)>=0;});
+        return list.length?mk(list):null;
+      }).catch(function(){return mk(NATIVE_FMTS);});
+    }
+  }catch(e){}
+  return Promise.resolve(mk(NATIVE_FMTS));
+}
+function camVideo(){return document.querySelector("#reader video");}
+function bandCanvas(v){
+  var vw=v.videoWidth, vh=v.videoHeight, cw=v.clientWidth||vw, ch=v.clientHeight||vh;
+  if(!vw||!vh) return null;
+  var sc=Math.max(cw/vw,ch/vh);
+  var visW=cw/sc, visH=ch/sc;
+  var sw=visW*0.94, sh=Math.min(vh,visH*0.6);
+  var sx=(vw-sw)/2, sy=(vh-sh)/2;
+  var k=Math.min(1,1280/sw);
+  var c=loopCanvas||(loopCanvas=document.createElement("canvas"));
+  c.width=Math.round(sw*k); c.height=Math.round(sh*k);
+  var ctx=c.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);
+  return c;
+}
+function loopTick(){
+  loopTimer=0;
+  if(!scanning||!scanner) return;
+  var v=camVideo();
+  if(loopBusy||!v||v.readyState<2){loopTimer=setTimeout(loopTick,150);return;}
+  loopBusy=true;
+  var p;
+  if(nativeDet){
+    p=nativeDet.detect(v).then(function(r){
+      if(r&&r.length) return r[0].rawValue;
+      var c=bandCanvas(v);
+      return c?nativeDet.detect(c).then(function(r2){return r2&&r2.length?r2[0].rawValue:"";}):"";
+    });
+  }else{
+    var c=bandCanvas(v);
+    p=(c&&scanner.qrcode&&scanner.qrcode.decodeAsync)?scanner.qrcode.decodeAsync(c).then(function(res){return res&&res.text;}):Promise.resolve("");
+  }
+  Promise.resolve(p).catch(function(){return "";}).then(function(text){
+    loopBusy=false;
+    if(text&&scanning){window.__lastSrc=nativeDet?"native":"loop";onScan(text);return;}
+    if(scanning) loopTimer=setTimeout(loopTick,nativeDet?150:250);
+  });
+}
+function startLoop(){
+  stopLoop();
+  getNativeDetector().then(function(){if(scanning&&!loopTimer) loopTimer=setTimeout(loopTick,150);});
+}
+function stopLoop(){if(loopTimer){clearTimeout(loopTimer);loopTimer=0;}}
+function onLibScan(text){if(scanning) window.__lastSrc="lib";onScan(text);}
 function setupTorch(){
   hideTorch();
   try{
@@ -677,6 +735,7 @@ function camLive(){
   $("under-cam").classList.add("show");
   setupTorch();
   tuneCam();
+  if(scanning) startLoop();
 }
 function showPhotoUi(err){
   $("cam").classList.remove("live");
@@ -696,6 +755,7 @@ function showPhotoUi(err){
   }
 }
 function stopCam(){
+  stopLoop();
   $("cam").classList.remove("live");
   hideTorch();
   camPaused=false;
@@ -708,6 +768,7 @@ function stopCam(){
   });
 }
 function pauseCam(){
+  stopLoop();
   $("cam").classList.remove("live");
   hideTorch();
   scanning=false;
@@ -738,7 +799,7 @@ function camConfig(id,low){
   if(id) vc.deviceId={exact:id}; else vc.facingMode={ideal:"environment"};
   return {
     fps:12,
-    qrbox:function(w,h){return {width:Math.max(220,Math.floor(w*0.86)),height:Math.max(90,Math.floor(Math.min(150,h*0.36)))};},
+    qrbox:function(w,h){return {width:Math.max(200,Math.floor(w*0.9)),height:Math.max(90,Math.floor(h*0.45))};},
     experimentalFeatures:{useBarCodeDetectorIfSupported:true},
     rememberLastUsedCamera:true,
     videoConstraints:vc
@@ -754,11 +815,11 @@ function startCam(){
   }).then(function(){
     starting=true;
     $("reader").innerHTML="";
-    scanner=new Html5Qrcode("reader",{formatsToSupport:formats(),verbose:false});
+    scanner=new Html5Qrcode("reader",{formatsToSupport:formats(),verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
     function tryCfg(id,low){
       curCamId=id||"";
       var src=id?id:{facingMode:{ideal:"environment"}};
-      return scanner.start(src,camConfig(id,low),onScan,function(){});
+      return scanner.start(src,camConfig(id,low),onLibScan,function(){});
     }
     function tryAll(id){
       return tryCfg(id,false).catch(function(){return tryCfg(id,true);});
@@ -780,13 +841,12 @@ function startCam(){
   });
 }
 function onScan(text){
-  var now=Date.now();
-  var key=norm(text).toUpperCase();
-  if(key&&key===lastKey&&now-lastAt<2000) return;
-  lastKey=key; lastAt=now;
-  if(!scanning) return;
+  text=String(text||"").trim();
+  if(!text||!scanning) return;
   scanning=false;
+  stopLoop();
   pauseCam();
+  window.__lastScan=text;
   applyDecoded(text);
 }
 function showScan(){
