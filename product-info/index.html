@@ -214,46 +214,55 @@ body.typing .tabbar{display:none}
 /* label */
 .pk-lbl{margin:14px 12px 24px}
 .lbl-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
-.lbl-bar .seg{display:flex;border:1px solid #d8c29c;border-radius:12px;overflow:hidden}
-.lbl-bar .seg button{background:#fffdf9;border:0;padding:9px 14px;font:400 13px Prompt;color:#8b0f14;cursor:pointer}
+.lbl-bar .seg{flex:1;display:flex;border:1px solid #d8c29c;border-radius:12px;overflow:hidden}
+.lbl-bar .seg button{flex:1;background:#fffdf9;border:0;padding:9px 14px;font:400 13px Prompt;color:#8b0f14;cursor:pointer}
 .lbl-bar .seg button.on{background:#8b0f14;color:#fff}
-.lbl-sheet{background:#fff;color:#000;border:1px solid #e3cfae;border-radius:6px;padding:16px;font-family:Prompt,sans-serif;box-shadow:0 8px 24px rgba(80,30,20,.12)}
-.lb-top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+/* label: sized in mm/pt for the chosen paper; the screen preview is the same sheet zoomed to fit */
+.lbl-wrap{background:#e9e1d4;border-radius:10px;padding:10px;overflow:hidden}
+.lbl-sheet{--w:132mm;--no:30pt;--ship:18pt;--f:12pt;--k:9.5pt;--t:11pt;--tc:10.5pt;--qr:36mm;--bch:13mm;--of:15pt;--bd:.35mm;--gap:3mm;--ip:1.1mm;
+  width:var(--w);box-sizing:content-box;background:#fff;color:#000;padding:8mm;margin:0 auto;font-family:Prompt,sans-serif;box-shadow:0 4px 16px rgba(80,30,20,.18);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.lbl-sheet.pg-A5-landscape{--w:194mm;--no:22pt;--ship:15pt;--f:11pt;--k:9pt;--t:11pt;--tc:10.5pt;--qr:31mm;--bch:10mm;--of:12pt;--gap:3mm}
+.lbl-sheet.pg-A4-portrait{--w:190mm;--no:40pt;--ship:24pt;--f:15pt;--k:11.5pt;--t:13pt;--tc:12.5pt;--qr:55mm;--bch:18mm;--of:19pt;--bd:.45mm;--gap:5mm}
+.lbl-sheet.pg-A4-landscape{--w:277mm;--no:36pt;--ship:22pt;--f:14pt;--k:11pt;--t:13pt;--tc:12.5pt;--qr:48mm;--bch:14mm;--of:17pt;--bd:.45mm;--gap:5mm}
+.lbl-sheet.land .lb-l{flex:none;width:min-content}
+.lbl-sheet.land .lb-info td{white-space:nowrap}
+.lbl-sheet.land .lb-info td.ship,.lbl-sheet.land .lb-info td.nt{white-space:normal}
+.lbl-sheet.land .lb-mid{flex:1;min-width:0}
+.lbl-sheet.land .lb-mid .lb-info{margin:0}
+.lbl-sheet.land{--ip:.9mm}
+.lbl-sheet.land .lb-info td.k{width:24%}
+.lb-tab td.c .e{display:block;font-size:.92em;color:#222}
+.lb-top{display:flex;gap:var(--gap);align-items:flex-start;justify-content:space-between}
 .lb-l{flex:1;min-width:0}
-.lb-brand{font-size:11px;letter-spacing:2px;color:#444;font-weight:500}
-.lb-no{font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;font-size:30px;font-weight:800;line-height:1.1;margin:4px 0 6px;letter-spacing:.5px;word-break:break-all}
-.lb-bc{display:block;width:100%;max-width:300px;height:46px}
-.lb-qr{flex:none;width:112px;height:112px}
+.lb-brand{font-size:var(--k);letter-spacing:.3em;color:#222;font-weight:600}
+.lb-no{font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;font-size:var(--no);font-weight:800;line-height:1.05;margin:1mm 0 2mm;letter-spacing:.02em;white-space:nowrap}
+.lb-bc{display:block;width:100%;height:var(--bch)}
+.lb-qr{flex:none;width:var(--qr);height:var(--qr)}
 .lb-qr svg,.lb-qr img{width:100%;height:100%;display:block}
-.lb-of{display:inline-block;border:2px solid #000;border-radius:6px;padding:2px 10px;font-weight:700;font-size:15px;margin-top:6px}
-.lb-info{width:100%;border-collapse:collapse;margin:10px 0 8px;font-size:12.5px}
-.lb-info td{border:1px solid #000;padding:4px 7px;vertical-align:top}
-.lb-info td.k{width:22%;font-size:10.5px;color:#333;white-space:nowrap}
-.lb-info .ship{font-size:18px;font-weight:600}
-.lb-tab{width:100%;border-collapse:collapse;font-size:11px}
-.lb-tab th{border:1px solid #000;background:#eee;padding:3px 5px;text-align:left;font-weight:600}
-.lb-tab td{border:1px solid #000;padding:3px 5px;vertical-align:top;word-break:break-word}
-.lb-tab td.c{font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;font-size:10.5px;white-space:nowrap}
-.lb-tab .q{text-align:right;font-weight:700;white-space:nowrap}
-.lb-tab tfoot td{font-weight:700;background:#f4f4f4}
+.lb-of{display:inline-block;border:var(--bd) solid #000;border-width:calc(var(--bd)*2);border-radius:2mm;padding:.5mm 3mm;font-weight:800;font-size:var(--of);margin-top:2.5mm}
+.lb-info{width:100%;border-collapse:collapse;margin:var(--gap) 0 var(--gap);font-size:var(--f);line-height:1.25}
+.lb-info td{border:var(--bd) solid #000;padding:var(--ip,1.4mm) 2.4mm;vertical-align:top}
+.lb-info td.k{width:20%;font-size:var(--k);font-weight:600;color:#222;white-space:nowrap}
+.lb-info .ship{font-size:var(--ship);font-weight:700;line-height:1.2}
+.lb-tab{width:100%;border-collapse:collapse;font-size:var(--t);line-height:1.25}
+.lb-tab th{border:var(--bd) solid #000;background:#e6e6e6;padding:1.2mm 1.8mm;text-align:left;font-weight:700}
+.lb-tab td{border:var(--bd) solid #000;padding:1mm 1.8mm;vertical-align:top;word-break:break-word}
+.lb-tab td.c{font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;font-size:var(--tc);white-space:nowrap}
+.lb-tab .q{text-align:right;font-weight:800;white-space:nowrap}
+.lb-tab tfoot td{font-weight:800;background:#f0f0f0}
 .lb-tab thead{display:table-header-group}
+.lb-tab tfoot{display:table-row-group}
 .lb-tab tr{page-break-inside:avoid;break-inside:avoid}
-.lb-nim{font-size:9px;font-weight:700;border:1px solid #000;border-radius:3px;padding:0 3px;margin-left:4px;white-space:nowrap}
-.lb-foot{margin-top:6px;font-size:9.5px;color:#444;display:flex;justify-content:space-between;gap:8px}
+.lb-nim{font-size:.75em;font-weight:800;border:var(--bd) solid #000;border-radius:1mm;padding:0 1mm;margin-left:1.5mm;white-space:nowrap}
+.lb-pr{margin-top:1.5mm;font-size:var(--k);color:#333}
+.lb-foot{margin-top:2mm;font-size:var(--k);color:#333;display:flex;justify-content:space-between;gap:3mm}
 @media print{
-  html,body{background:#fff!important;min-height:0;padding:0!important;margin:0}
+  html,body{background:#fff!important;min-height:0!important;padding:0!important;margin:0!important;width:auto!important}
   body>*{display:none!important}
-  body>#pk-label{display:block!important;margin:0!important}
+  body>#pk-label{display:block!important;margin:0!important;padding:0!important}
   #pk-label .noprint{display:none!important}
-  .lbl-sheet{border:0!important;border-radius:0;box-shadow:none!important;padding:0!important}
-  .lb-no{font-size:28pt}
-  .lb-qr{width:30mm;height:30mm}
-  .lb-bc{height:12mm;max-width:75mm}
-  .lb-tab{font-size:8.5pt}
-  .lb-tab td.c{font-size:8pt}
-  .lb-info{font-size:9.5pt}
-  .lb-info .ship{font-size:14pt}
-  .lb-foot{font-size:7.5pt}
+  .lbl-wrap{background:none!important;padding:0!important;border-radius:0;overflow:visible!important;zoom:1!important}
+  .lbl-sheet{width:auto!important;max-width:none!important;padding:0!important;margin:0!important;box-shadow:none!important;zoom:1!important;transform:none!important}
 }
 </style>
 </head>
@@ -396,8 +405,9 @@ body.typing .tabbar{display:none}
 
 <div class="pk-lbl hidden" id="pk-label">
   <div class="lbl-bar noprint">
-    <button type="button" class="btn" id="l-print" style="flex:1">🖨 พิมพ์ · Print</button>
+    <button type="button" class="btn" id="l-print" style="flex:1 1 100%">🖨 พิมพ์ · Print</button>
     <div class="seg"><button type="button" id="l-a5" class="on">A5</button><button type="button" id="l-a4">A4</button></div>
+    <div class="seg"><button type="button" id="l-por" class="on">แนวตั้ง · Portrait</button><button type="button" id="l-land">แนวนอน · Landscape</button></div>
   </div>
   <div id="label-sheet"></div>
   <div class="pk-act noprint">
@@ -419,7 +429,7 @@ body.typing .tabbar{display:none}
   <button type="button" id="tab-info" class="on"><span class="ic">🔍</span>ข้อมูลสินค้า · Info</button>
   <button type="button" id="tab-pack"><span class="ic">📦</span><span>แพ็คกล่อง · Packing<span class="dot" id="tab-dot"></span></span></button>
 </nav>
-<style id="page-size">@page{size:A5 portrait;margin:7mm}</style>
+<style id="page-size">@page{size:A5 portrait;margin:8mm}</style>
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <script>
@@ -1915,24 +1925,45 @@ function pkEditBox(b){
 }
 
 /* ---------- label ---------- */
+var PAGE={size:"A5",orient:"portrait"};
 function pkShowLabel(b){
   pkLabelBox=b;
-  pkShow("label");
+  if(PKVIEW!=="label") pkShow("label");
+  renderLabel();
+}
+function renderLabel(){
+  var b=pkLabelBox; if(!b) return;
+  var land=PAGE.orient==="landscape";
   var items=b.items||[], t=pkTotals(b);
   var rows=items.map(function(l,i){
-    return "<tr><td>"+(i+1)+'</td><td class="c">'+esc(l.sku||"—")+'</td><td class="c">'+esc(l.ean||"")+"</td><td>"+esc(l.desc)+(l.flag?'<span class="lb-nim">'+esc(l.flag)+"</span>":"")+'</td><td class="q">'+(l.qty||0)+"</td></tr>";
+    var d="<td>"+esc(l.desc)+(l.flag?'<span class="lb-nim">'+esc(l.flag)+"</span>":"")+"</td>";
+    var codes=land?('<td class="c">'+esc(l.sku||"—")+'</td><td class="c">'+esc(l.ean||"")+"</td>"):('<td class="c">'+esc(l.sku||"—")+'<span class="e">'+esc(l.ean||"")+"</span></td>");
+    return "<tr><td>"+(i+1)+"</td>"+codes+d+'<td class="q">'+(l.qty||0)+"</td></tr>";
   }).join("");
-  $("label-sheet").innerHTML='<div class="lbl-sheet">'+
-    '<div class="lb-top"><div class="lb-l"><div class="lb-brand">PRESTIGE · PACKING LIST</div><div class="lb-no">'+esc(b.boxNo)+'</div><svg class="lb-bc" id="lb-bc"></svg>'+
-    (b.boxOf?'<span class="lb-of">BOX '+esc(String(b.boxOf).replace("/"," / "))+"</span>":"")+'</div><div class="lb-qr" id="lb-qr"></div></div>'+
-    '<table class="lb-info"><tr><td class="k">SHIP TO<br>ปลายทาง</td><td colspan="3" class="ship">'+esc(b.shipTo||"")+"</td></tr>"+
+  var thead=land?'<th style="width:4%">#</th><th style="width:13%">SKU</th><th style="width:17%">Barcode</th><th>Description</th><th class="q" style="width:7%">Qty</th>'
+    :'<th style="width:6%">#</th><th style="width:25%">SKU / Barcode</th><th>Description</th><th class="q" style="width:10%">Qty</th>';
+  var info=('<table class="lb-info"><tr><td class="k">SHIP TO<br>ปลายทาง</td><td colspan="3" class="ship">'+esc(b.shipTo||"")+"</td></tr>"+
     '<tr><td class="k">REF NO</td><td>'+esc(b.refNo||"—")+'</td><td class="k">DATE</td><td>'+esc(b.closed||b.created||"")+"</td></tr>"+
     '<tr><td class="k">PACKED BY</td><td>'+esc(b.packedBy||"")+'</td><td class="k">TOTAL</td><td><b>'+t.qty+"</b> pcs · "+t.lines+" lines</td></tr>"+
-    (b.note?'<tr><td class="k">NOTE</td><td colspan="3">'+esc(b.note)+"</td></tr>":"")+"</table>"+
-    '<table class="lb-tab"><thead><tr><th style="width:5%">#</th><th style="width:15%">SKU</th><th style="width:21%">Barcode</th><th>Description</th><th class="q" style="width:8%">Qty</th></tr></thead><tbody>'+rows+
-    '</tbody><tfoot><tr><td colspan="4">TOTAL · '+t.lines+' lines</td><td class="q">'+t.qty+"</td></tr></tfoot></table>"+
-    '<div class="lb-foot"><span>'+esc(b.status||"")+'</span><span>Printed '+esc(formatLoadTime(new Date()))+"</span></div></div>";
+    (b.note?'<tr><td class="k">NOTE</td><td colspan="3" class="nt">'+esc(b.note)+"</td></tr>":"")+"</table>");
+  var head='<div class="lb-brand">PRESTIGE · PACKING LIST</div><div class="lb-no">'+esc(b.boxNo)+'</div><svg class="lb-bc" id="lb-bc"></svg>'+
+    (b.boxOf?'<span class="lb-of">BOX '+esc(String(b.boxOf).replace("/"," / "))+"</span>":"")+
+    '<div class="lb-pr">'+esc(b.status||"")+" · Printed "+esc(formatLoadTime(new Date()))+"</div>";
+  $("label-sheet").innerHTML='<div class="lbl-wrap" id="lbl-wrap"><div class="lbl-sheet pg-'+PAGE.size+"-"+PAGE.orient+(land?" land":"")+'" id="lbl-sheet">'+
+    '<div class="lb-top"><div class="lb-l">'+head+"</div>"+(land?'<div class="lb-mid">'+info+"</div>":"")+'<div class="lb-qr" id="lb-qr"></div></div>'+(land?'<div style="height:var(--gap)"></div>':info)+
+    '<table class="lb-tab"><thead><tr>'+thead+'</tr></thead><tbody>'+rows+
+    '</tbody><tfoot><tr><td colspan="'+(land?4:3)+'">TOTAL · '+t.lines+' lines</td><td class="q">'+t.qty+"</td></tr></tfoot></table>"+
+    "</div></div>";
+  fitLabel();
+  if(window.qrcode&&window.JsBarcode) drawLabelCodes(b.boxNo);
   labelLibs().then(function(){drawLabelCodes(b.boxNo);});
+}
+/* screen preview only: zoom the real-size sheet down to the phone width (print resets zoom to 1) */
+function fitLabel(){
+  var w=$("lbl-wrap"), sh=$("lbl-sheet"); if(!w||!sh) return;
+  sh.style.zoom=1;
+  var avail=w.clientWidth-20, need=sh.offsetWidth;
+  if(need>0&&avail>0) sh.style.zoom=Math.min(1,avail/need).toFixed(4);
 }
 function drawLabelCodes(no){
   try{
@@ -1950,10 +1981,14 @@ function drawLabelCodes(no){
     }
   }catch(e){}
 }
-function setPageSize(sz){
-  $("page-size").textContent="@page{size:"+sz+" portrait;margin:"+(sz==="A4"?"10mm":"7mm")+"}";
-  $("l-a5").classList.toggle("on",sz==="A5"); $("l-a4").classList.toggle("on",sz==="A4");
-  try{localStorage.setItem("productInfo.pack.page",sz);}catch(e){}
+function setPageSize(sz,orient){
+  PAGE.size=sz==="A4"?"A4":"A5";
+  PAGE.orient=orient==="landscape"?"landscape":(orient==="portrait"?"portrait":PAGE.orient);
+  $("page-size").textContent="@page{size:"+PAGE.size+" "+PAGE.orient+";margin:8mm}";
+  $("l-a5").classList.toggle("on",PAGE.size==="A5"); $("l-a4").classList.toggle("on",PAGE.size==="A4");
+  $("l-por").classList.toggle("on",PAGE.orient==="portrait"); $("l-land").classList.toggle("on",PAGE.orient==="landscape");
+  try{localStorage.setItem("productInfo.pack.page",PAGE.size+"|"+PAGE.orient);}catch(e){}
+  if(PKVIEW==="label") renderLabel();
 }
 function pkPrint(){
   labelLibs().then(function(){
@@ -2015,12 +2050,15 @@ function pkInit(){
   $("l-print").onclick=pkPrint;
   $("l-a5").onclick=function(){setPageSize("A5");};
   $("l-a4").onclick=function(){setPageSize("A4");};
+  $("l-por").onclick=function(){setPageSize(PAGE.size,"portrait");};
+  $("l-land").onclick=function(){setPageSize(PAGE.size,"landscape");};
+  window.addEventListener("resize",function(){if(PKVIEW==="label") fitLabel();});
   $("l-new").onclick=function(){pkNewForm(false);};
   $("l-back").onclick=function(){pkShow("home");};
   $("sh-cancel").onclick=function(){closeSheet(true);};
   $("sheet").addEventListener("click",function(e){if(e.target===$("sheet")) closeSheet(true);});
-  var ps="A5";try{ps=localStorage.getItem("productInfo.pack.page")||"A5";}catch(e){}
-  setPageSize(ps==="A4"?"A4":"A5");
+  var ps="A5|portrait";try{ps=localStorage.getItem("productInfo.pack.page")||"A5|portrait";}catch(e){}
+  ps=ps.split("|"); setPageSize(ps[0],ps[1]==="landscape"?"landscape":"portrait");
   var t="info";try{t=localStorage.getItem(TABKEY)||"info";}catch(e){}
   var deep=(/[?&]box=(PK-\d{6}-\d{3,})/i.exec(location.search||"")||[])[1];
   if(deep){setTab("pack",true);pkOpenView(deep.toUpperCase());}
