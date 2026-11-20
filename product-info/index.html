@@ -764,6 +764,7 @@ function candidates(raw){
   var g0=gtinOf(text); if(g0){push(g0);}
   var head=text.split(/[+\s|;,]+/)[0];
   if(head&&head!==text) push(head); // QR like "1110042+ 20/Nov/2025" -> SKU only
+  if(typeof scScanCode==="function"){ var sc=scScanCode(text); if(sc&&sc!==text) push(sc); }
   var url=null;
   try{if(/^[a-z]+:\/\//i.test(text)) url=new URL(text);}catch(e){}
   if(url){
@@ -961,13 +962,20 @@ function decodeImage(file){
   }).catch(function(){return "";});
 }
 function applyDecoded(text){
+  if(MODE==="count"&&SC.view==="work"&&SC.work==="count"&&scCur()){
+    if(scIsDup(text)) return;
+    lastKey=norm(scScanCode(text)).toUpperCase(); lastAt=Date.now();
+    var sess=parseScScan(text);
+    if(sess){scOpen(sess);return;}
+    scScan(text);
+    return;
+  }
   lastKey=norm(text).toUpperCase(); lastAt=Date.now();
   vibrate(); beep();
   var sc=parseScScan(text);
   if(sc){scOpen(sc);return;}
   var pk=parsePackScan(text);
   if(pk){openBoxNo(pk.boxNo, pk.boxSeq||0);return;}
-  if(MODE==="count"&&SC.view==="work"&&SC.work==="count"&&scCur()){scScan(text);return;}
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){pkScan(text);return;}
   var hits=lookup(text);
   showHits(hits, text);
@@ -1130,7 +1138,9 @@ function bandCanvas(v){
   if(!vw||!vh) return null;
   var sc=Math.max(cw/vw,ch/vh);
   var visW=cw/sc, visH=ch/sc;
-  var sw=visW*0.94, sh=Math.min(vh,visH*0.6);
+  var sw, sh;
+  if(MODE==="count"){ var side=Math.min(vw,vh)*0.85; sw=side; sh=side; }
+  else { sw=visW*0.94; sh=Math.min(vh,visH*0.6); }
   var sx=(vw-sw)/2, sy=(vh-sh)/2;
   var k=Math.min(1,1280/sw);
   var c=loopCanvas||(loopCanvas=document.createElement("canvas"));
@@ -1287,7 +1297,10 @@ function camConfig(id,low){
   if(id) vc.deviceId={exact:id}; else vc.facingMode={ideal:"environment"};
   return {
     fps:12,
-    qrbox:function(w,h){return {width:Math.max(200,Math.floor(w*0.9)),height:Math.max(90,Math.floor(h*0.45))};},
+    qrbox:function(w,h){
+      if(MODE==="count"){ var s=Math.max(180,Math.floor(Math.min(w,h)*0.72)); return {width:s,height:s}; }
+      return {width:Math.max(200,Math.floor(w*0.9)),height:Math.max(90,Math.floor(h*0.45))};
+    },
     experimentalFeatures:{useBarCodeDetectorIfSupported:true},
     rememberLastUsedCamera:true,
     videoConstraints:vc
@@ -1335,6 +1348,12 @@ function startCam(){
 function onScan(text){
   text=String(text||"").trim();
   if(!text||!scanning||pkSheetOpen) return;
+  if(MODE==="count"&&scCur()){
+    if(scIsDup(text)) return;
+    window.__lastScan=text;
+    applyDecoded(text);
+    return;
+  }
   // packing auto-resumes the camera; ignore the same label still in view for a moment (only duplicate check)
   if(MODE==="pack"&&norm(text).toUpperCase()===lastKey&&Date.now()-pkResumeAt<1800) return;
   scanning=false;
@@ -2308,6 +2327,7 @@ function openSheet(title,sub){
 function closeSheet(resume){
   if(!pkSheetOpen&&$("sheet").classList.contains("hidden")) return;
   pkSheetOpen=false; show($("sheet"),false); $("sh-body").innerHTML="";
+  if(MODE==="count"&&scScanLock&&!SC.stage) scUnlockScan();
   if(resume) pkAfter();
 }
 function pkPick(rows,text,msg,allowUnknown){
@@ -3053,6 +3073,7 @@ function selectedCsv(){
 
 var SCKEY="productInfo.count.v1", SCNAME="productInfo.count.by";
 var SC={sessions:[],cur:"",view:"home",work:"count",mode:"scan",loc:"",hideZero:true,cat:"ALL",brands:[],eanMem:{},queue:[],pendingSoh:null,sess:null,imp:null,stage:null,flushing:false};
+var scLastScan="", scLastAt=0, scScanLock=false;
 var SC_C1H=["No","ItemNo FDA","EAN CODE Packaging","QTY","Location","EAN CODE","SKU","ItemDescription","Group","Check SKU","Check BarCode","TimeStamp"];
 function parseScScan(text){
   var t=String(text||"").trim();
@@ -3552,7 +3573,7 @@ function scBucket(sku, desc, masterGroup, override){
   if(/GWP|SAMP|MINI|PR GIFT|EXEC GIFT/.test(g)) return "GWPS";
   var d=String(desc||"").toUpperCase(), s=String(sku||"").toUpperCase();
   if(/TESTER/.test(d)) return "TESTER";
-  if(/[0-9][FT]$/.test(s)||/TESTER/.test(s)) return "TESTER";
+  if(/^T-/.test(s)||/[0-9][FT]$/.test(s)||/TESTER/.test(s)) return "TESTER";
   if(/GWP|GIFT/.test(d)) return "GWPS";
   return "STOCK";
 }
@@ -3626,30 +3647,63 @@ function scFindSoh(sku, barcode){
   if(bu) return soh.filter(function(r){return String(r.barcode).toUpperCase()===bu;})[0]||null;
   return null;
 }
+function scScanCode(text){
+  var t=scStripTick(String(text||"").trim());
+  var i=t.indexOf("+");
+  if(i>=0) t=t.slice(0,i).trim();
+  return scStripTick(t);
+}
+function scKey(s){return scScanCode(s).toUpperCase();}
+function scIsDup(text){
+  if(scScanLock) return true;
+  var k=scKey(text);
+  return !!(k&&k===scLastScan&&(Date.now()-scLastAt)<1500);
+}
+function scMarkAccepted(text){
+  scScanLock=false;
+  scLastScan=scKey(text);
+  scLastAt=Date.now();
+  vibrate(); beep();
+}
+function scUnlockScan(){ scScanLock=false; }
+function scEans(r){
+  var out=[], seen={};
+  function add(e){ e=scStripTick(e); if(!e||seen[e]) return; seen[e]=1; out.push(e); }
+  [r.barcode,r.ean,r.ean1,r.ean2,r.ean3].forEach(add);
+  (r.eans||[]).forEach(add);
+  return out;
+}
 function scResolve(raw){
   raw=String(raw||"").trim();
-  var exact=lookup(raw)||[];
-  var skuHits=exact.filter(function(r){return String(r.sku).toUpperCase()===norm(raw).toUpperCase()||String(r.sku)===raw;});
-  var eanHits=exact.filter(function(r){return [r.ean1,r.ean2,r.ean3,r.ean].some(function(e){return e&&String(e)===raw;});});
+  var code=scScanCode(raw), key=scKey(code);
   var soh=(SC.sess&&SC.sess.soh)||[];
-  var sohSku=soh.filter(function(r){return String(r.sku).toUpperCase()===raw.toUpperCase();});
-  var sohEan=soh.filter(function(r){return r.barcode&&String(r.barcode)===raw;});
   var bySku={};
   function add(r, from){
     var sku=r.sku||r.SKU; if(!sku) return;
-    var k=String(sku).toUpperCase();
-    if(!bySku[k]) bySku[k]={sku:sku,barcode:r.barcode||r.ean1||r.ean||"",desc:r.desc||r.description||r.name||"",brand:r.brand||"",group:r.group||r.Group||"",from:from,pos:scFindSoh(sku,r.barcode||r.ean1)};
-    else if(!bySku[k].barcode) bySku[k].barcode=r.barcode||r.ean1||"";
+    var k=scKey(sku);
+    var ean=scEans(r)[0]||"";
+    if(!bySku[k]) bySku[k]={sku:sku,barcode:r.barcode||ean,desc:r.desc||r.description||r.name||"",brand:r.brand||"",group:r.group||r.Group||"",from:from,pos:scFindSoh(sku,r.barcode||ean)};
+    else if(!bySku[k].barcode&&ean) bySku[k].barcode=ean;
   }
-  skuHits.forEach(function(r){add(r,"sku");});
-  if(!skuHits.length) sohSku.forEach(function(r){add(r,"soh");});
-  eanHits.forEach(function(r){add(r,"ean");});
-  sohEan.forEach(function(r){add(r,"soh-ean");});
-  return {raw:raw, cands:Object.keys(bySku).map(function(k){return bySku[k];})};
+  if(key){
+    soh.forEach(function(r){ if(scEans(r).some(function(e){return scKey(e)===key;})) add(r,"soh-ean"); });
+    if(!Object.keys(bySku).length){
+      (lookup(code)||[]).forEach(function(r){ if(scEans(r).some(function(e){return scKey(e)===key;})) add(r,"ean"); });
+    }
+    if(!Object.keys(bySku).length){
+      var want={}; want[key]=1;
+      if(key.indexOf("T-")===0) want[key.slice(2)]=1; else want["T-"+key]=1;
+      soh.forEach(function(r){ if(want[scKey(r.sku)]) add(r,"soh"); });
+      (lookup(code)||[]).forEach(function(r){ if(want[scKey(r.sku)]||scKey(r.sku)===key) add(r,"sku"); });
+    }
+  }
+  return {raw:code, input:raw, cands:Object.keys(bySku).map(function(k){return bySku[k];})};
 }
 function scScan(text, manual){
   if(!SC.sess){toast("ยังไม่ได้เปิดรอบนับ");return;}
-  SC.work="count"; scWork("count");
+  if(!manual&&scIsDup(text)) return;
+  if(SC.view!=="work"||SC.work!=="count"){ SC.work="count"; scWork("count"); }
+  if(!manual) scScanLock=true;
   var r=scResolve(text);
   if(r.cands.length>1){
     var mem=SC.eanMem[r.raw];
@@ -3658,11 +3712,11 @@ function scScan(text, manual){
     return;
   }
   if(r.cands.length===1){scAccept(r.cands[0], r.raw, {flag:""});return;}
-  scAccept({sku:"",barcode:/^\d{8,14}$/.test(text)?text:"",desc:"",brand:""}, text, {flag:"NOT IN MASTER"});
+  scAccept({sku:"",barcode:/^\d{8,14}$/.test(text)?text:"",desc:"",brand:""}, r.raw, {flag:"NOT IN MASTER"});
 }
 function scPick(res, onPick){
   var tes=res.cands.filter(function(c){return scBucket(c.sku,c.desc,c.group,"")==="TESTER";});
-  var body=openSheet("เลือก SKU · "+res.raw, "บาร์โค้ดนี้ตรงหลายรหัส — เลือกก่อนนับ (จำในรอบนี้)");
+  var body=openSheet("เลือก SKU · "+res.raw, tes.length?"พบทั้งสินค้าขายและ Tester — เลือกก่อนนับ (จำในรอบนี้)":"รหัสนี้ตรงหลายรายการ — เลือกก่อนนับ (จำในรอบนี้)");
   body.innerHTML='<div class="sc-chips"><button type="button" class="on" id="sc-pk-all">ทั้งหมด ('+res.cands.length+')</button>'+(tes.length?'<button type="button" id="sc-pk-t">Tester ('+tes.length+')</button>':"")+'</div><div id="sc-pk-list"></div>';
   function draw(list){
     $("sc-pk-list").innerHTML=list.map(function(c,i){
@@ -3680,6 +3734,7 @@ function scAccept(c, raw, opt){
   var rec={eventId:uid(),kind:"count",refEventId:"",ts:scTime(),user:scBy(),location:($("sc-loc")&&$("sc-loc").value.trim())||SC.loc,mode:SC.mode,scanned:raw,sku:c.sku||"",barcode:c.barcode||"",desc:c.desc||"",qty:1,flag:opt.flag||(!c.sku?"NOT IN MASTER":"")};
   if(SC.mode==="key"){SC.stage=rec;scRenderStage();return;}
   scQueueLines([rec]);
+  scMarkAccepted(raw);
   toast((rec.sku||rec.scanned)+" +1");
 }
 function scRenderStage(){
@@ -3694,6 +3749,7 @@ function scRenderStage(){
     var rec=Object.assign({},SC.stage,{qty:n,eventId:uid(),ts:scTime()});
     SC.stage=null; show(el,false);
     scQueueLines([rec]);
+    scMarkAccepted(rec.scanned);
     toast((rec.sku||rec.scanned)+" × "+n);
   }
   el.querySelector(".sc-pad").onclick=function(e){
@@ -3704,7 +3760,7 @@ function scRenderStage(){
     inp.value=String(inp.value||"")+k;
   };
   inp.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();commit();}};
-  $("sc-stage-x").onclick=function(){SC.stage=null;show(el,false);};
+  $("sc-stage-x").onclick=function(){SC.stage=null;show(el,false);scUnlockScan();};
 }
 function scRenderCount(){
   if(!SC.sess) return;
@@ -3873,7 +3929,7 @@ function pkInit(){
   else if(t==="pack") setTab("pack");
 }
 
-window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,SCVIEW:SC.view,SCWORK:SC.work,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox(),sc:scCur()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;},parsePosSoh:parsePosSoh,parseScScan:parseScScan,scOpen:scOpen,scScan:scScan,scShow:scShow,scExport:scExport,scReconcile:scReconcile,scBucket:scBucket,scCur:scCur,SC:function(){return SC;}};
+window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,SCVIEW:SC.view,SCWORK:SC.work,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox(),sc:scCur()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;},parsePosSoh:parsePosSoh,parseScScan:parseScScan,scScanCode:scScanCode,scResolve:scResolve,scIsDup:scIsDup,scMarkAccepted:scMarkAccepted,scOpen:scOpen,scScan:scScan,scShow:scShow,scExport:scExport,scReconcile:scReconcile,scBucket:scBucket,scCur:scCur,SC:function(){return SC;}};
 window.__pc={lookup:lookup,showHits:showHits,candidates:candidates,findExact:findExact,buildIndex:buildIndex,CAT:function(){return CATALOG;},showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
 pkInit();
 loadCatalog();
