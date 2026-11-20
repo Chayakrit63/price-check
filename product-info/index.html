@@ -136,6 +136,54 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .tabbar button.on .ic{filter:none;opacity:1}
 .tabbar .dot{display:none;position:relative;top:-2px;margin-left:4px;background:#c0262d;color:#fff;border-radius:10px;font-size:10px;padding:0 6px}
 .tabbar .dot.on{display:inline-block}
+
+body.mode-count .cam{margin:14px 18px;height:250px}
+body.mode-count #scan.typing .cam{height:110px}
+body.mode-count .or,body.mode-count .foot{display:none}
+.sc-root{margin:0 0 20px}
+.sc-bar{margin:12px 18px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sc-bar .no{font-weight:700;color:#8b0f14;font-size:16px}
+.sc-bar .meta{flex:1;min-width:0;font-size:12.5px;color:#9a8670}
+.sc-sub{display:flex;gap:6px;margin:10px 18px 0;overflow:auto;padding-bottom:2px}
+.sc-sub button{flex:none;border:1px solid #e3cfae;background:#fffdf9;color:#5c4638;border-radius:16px;padding:6px 12px;font:400 12.5px Prompt;cursor:pointer}
+.sc-sub button.on{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.sc-pane{margin:10px 18px 0}
+.sc-pane h3{margin:0 0 8px;font-size:15px;color:#8b0f14}
+.sc-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.sc-actions .btn,.sc-actions .btn2{margin:0;flex:1;min-width:120px}
+.sc-tog{display:flex;border:1px solid #e3cfae;border-radius:12px;overflow:hidden;margin:0 0 10px}
+.sc-tog button{flex:1;border:0;background:#fffdf9;padding:9px 8px;font:400 13px Prompt;color:#5c4638;cursor:pointer}
+.sc-tog button.on{background:#8b0f14;color:#fff;font-weight:500}
+.sc-loc{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.sc-loc input{flex:1;min-width:0}
+.sc-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.sc-chips button{border:1px solid #e3cfae;background:#fff;border-radius:14px;padding:5px 10px;font:400 12px Prompt;color:#5c4638;cursor:pointer}
+.sc-chips button.on{background:#f1e3cf;border-color:#c9a36a;color:#8b0f14;font-weight:500}
+.sc-stage{background:#fffdf9;border:1px solid #e3cfae;border-radius:12px;padding:10px 12px;margin:0 0 10px}
+.sc-stage .nm{font-weight:500}
+.sc-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 0}
+.sc-pad button{background:#fff;border:1px solid #e3cfae;border-radius:10px;padding:12px 0;font:500 18px Prompt;color:#2a1a17;cursor:pointer}
+.sc-pad button.ok{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.sc-line{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid #f1e3cf}
+.sc-line .d{flex:1;min-width:0}
+.sc-line .sku{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:#8b0f14}
+.sc-line .q{font-weight:700;font-size:18px;min-width:28px;text-align:right}
+.sc-tot{display:flex;justify-content:space-between;margin:8px 0;font-size:13.5px}
+.sc-map{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.sc-map label{display:block;font-size:11.5px;color:#9a8670}
+.sc-map select{width:100%}
+.sc-brands{max-height:180px;overflow:auto;border:1px solid #e3cfae;border-radius:10px;padding:8px;background:#fff}
+.sc-brands label{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px}
+.sc-preview{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.sc-preview th,.sc-preview td{border-bottom:1px solid #f1e3cf;padding:4px 6px;text-align:left;vertical-align:top}
+.sc-preview td.c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
+.sc-rec{min-width:100%}.sc-rec th,.sc-rec td{font-size:11.5px;white-space:nowrap}.sc-rec td:nth-child(2){white-space:normal;min-width:120px}
+.sc-rec td.diff.neg{color:#b42318;font-weight:700}
+.sc-rec td.diff.pos{color:#1b7f3a;font-weight:700}
+.sc-unsync{font-size:12px;color:#9a5b00}
+.sc-form .row{margin:0 18px 10px}
+.sc-empty{color:#9a8670;font-size:13.5px;padding:16px 0}
+.sc-flag{display:inline-block;margin-left:4px;background:#e98b2c;color:#fff;font-size:10px;border-radius:8px;padding:0 5px}
 body.typing .tabbar{display:none}
 .pk-h{margin:14px 18px 0;background:#fffdf9;border:1px solid #e3cfae;border-radius:18px;padding:12px 14px}
 .pk-h .row1{display:flex;align-items:center;gap:8px}
@@ -467,9 +515,80 @@ body.typing .tabbar{display:none}
   </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sc-root hidden" id="sc-root">
+  <div id="sc-home">
+    <div class="pk-lh" style="margin:14px 18px 8px"><span>นับสต็อก · Stock Count</span><button type="button" class="btn" id="sc-new" style="margin:0;width:auto;padding:8px 14px">+ สร้างรอบนับ</button></div>
+    <div class="row1" style="margin:0 18px 8px"><input id="sc-q" placeholder="ค้นหา SC / เคาน์เตอร์ / ผู้ตรวจ" autocomplete="off"><button type="button" class="pk-ib" id="sc-reload">↻</button></div>
+    <div class="sc-pane" style="margin-top:0"><div id="sc-list"></div></div>
+  </div>
+  <div id="sc-form" class="hidden sc-form">
+    <div class="pk-lh" style="margin:14px 18px 8px"><span id="sc-f-title">สร้างรอบนับ · New session</span></div>
+    <div class="row"><label>เคาน์เตอร์ · Counter</label><input id="sc-f-ctr" list="sc-ctr-list" placeholder="เลือกหรือพิมพ์ได้" autocomplete="off"><datalist id="sc-ctr-list"></datalist></div>
+    <div class="row"><label>วันที่นับ · Date</label><input id="sc-f-date" type="date"></div>
+    <div class="row"><label>ผู้ตรวจนับ · Counted by</label><input id="sc-f-by" placeholder="ชื่อผู้ตรวจ" autocomplete="name"></div>
+    <div class="sc-actions" style="margin:12px 18px 0"><button type="button" class="btn" id="sc-f-ok">บันทึก · Save</button><button type="button" class="btn2" id="sc-f-cancel">ยกเลิก</button></div>
+  </div>
+  <div id="sc-work" class="hidden">
+    <div class="sc-bar">
+      <div class="no" id="sc-no"></div>
+      <div class="meta" id="sc-meta"></div>
+      <button type="button" class="pk-ib" id="sc-homebtn">☰ รายการ</button>
+    </div>
+    <div class="sc-sub" id="sc-sub">
+      <button type="button" data-w="import">นำเข้า SOH</button>
+      <button type="button" data-w="count" class="on">นับ</button>
+      <button type="button" data-w="rec">กระทบยอด</button>
+      <button type="button" data-w="log">ปูมสแกน</button>
+      <button type="button" data-w="exp">ส่งออก</button>
+    </div>
+    <div class="sc-pane hidden" id="sc-import">
+      <h3>นำเข้า POS stock on hand</h3>
+      <p class="sc-empty" style="padding-top:0">รองรับไฟล์ POS2U .xls (ตาราง HTML), CSV, XLSX · รหัสสินค้า / บาร์โค้ด / หมวดหมู่ / จำนวน</p>
+      <input type="file" id="sc-file" accept=".xls,.xlsx,.csv,.txt,text/csv,application/vnd.ms-excel">
+      <div id="sc-imap" class="hidden">
+        <div class="sc-map" id="sc-map"></div>
+        <div id="sc-imp-info" class="meta" style="margin:6px 0;font-size:12.5px;color:#9a8670"></div>
+        <div style="margin:8px 0 4px;font-size:13px">เลือกแบรนด์ที่จะนำเข้า</div>
+        <div class="sc-actions" style="margin:0 0 6px"><button type="button" class="btn2" id="sc-br-all" style="flex:none">เลือกทั้งหมด</button><button type="button" class="btn2" id="sc-br-none" style="flex:none">ไม่เลือก</button></div>
+        <div class="sc-brands" id="sc-brands"></div>
+        <div style="overflow:auto"><table class="sc-preview" id="sc-prev"></table></div>
+        <div class="sc-actions"><button type="button" class="btn" id="sc-imp-save">บันทึกเข้าเซสชัน</button></div>
+      </div>
+    </div>
+    <div class="sc-pane" id="sc-countp">
+      <div class="sc-tog" id="sc-mode"><button type="button" data-m="scan" class="on">สแกน = +1</button><button type="button" data-m="key">สแกนแล้วคีย์จำนวน</button></div>
+      <div class="sc-loc"><label>ที่เก็บ · Location</label><input id="sc-loc" list="sc-loc-list" placeholder="Shelf / Stock room / Tester หรือพิมพ์เอง"><datalist id="sc-loc-list"><option value="Shelf"><option value="Stock room"><option value="Tester"></datalist></div>
+      <div class="sc-chips" id="sc-cat"></div>
+      <div class="sc-chips" id="sc-brandf"></div>
+      <div id="sc-stage" class="sc-stage hidden"></div>
+      <div class="sc-tot"><span id="sc-ctot"></span><span class="sc-unsync" id="sc-unsync"></span></div>
+      <div id="sc-lines"></div>
+    </div>
+    <div class="sc-pane hidden" id="sc-rec">
+      <div class="sc-chips" id="sc-rfilt"></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:0 0 8px"><input type="checkbox" id="sc-zero"> แสดง POS ที่คงเหลือ 0 ใน Not counted</label>
+      <div class="sc-tot" id="sc-rtot"></div>
+      <div style="overflow:auto"><table class="sc-preview sc-rec" id="sc-rtable"></table></div>
+    </div>
+    <div class="sc-pane hidden" id="sc-logp">
+      <div class="sc-tot" id="sc-ltot"></div>
+      <div id="sc-log"></div>
+    </div>
+    <div class="sc-pane hidden" id="sc-exp">
+      <h3>ส่งออก CSV</h3>
+      <p class="sc-empty" style="padding-top:0">ไฟล์สรุปและปูมสแกนใช้หัวตาราง Check 1st Step แถว 2 ของ StockCheckFormDEV วางที่ A2 หรือข้อมูลที่ B3</p>
+      <div class="sc-actions" style="flex-direction:column">
+        <button type="button" class="btn" id="sc-x-sum">สรุปต่อ SKU · Check 1st Step</button>
+        <button type="button" class="btn2" id="sc-x-rec">กระทบยอด · Reconcile</button>
+        <button type="button" class="btn2" id="sc-x-log">ปูมสแกนดิบ · Scan log</button>
+      </div>
+    </div>
+  </div>
+</div>
 <nav class="tabbar" id="tabbar">
   <button type="button" id="tab-info" class="on"><span class="ic">🔍</span>ข้อมูลสินค้า · Info</button>
   <button type="button" id="tab-pack"><span class="ic">📦</span><span>แพ็คกล่อง · Packing<span class="dot" id="tab-dot"></span></span></button>
+  <button type="button" id="tab-count"><span class="ic">📋</span>นับสต็อก · Count</button>
 </nav>
 <style id="page-size">@page{size:A5 portrait;margin:8mm}</style>
 
@@ -818,8 +937,11 @@ function decodeImage(file){
 function applyDecoded(text){
   lastKey=norm(text).toUpperCase(); lastAt=Date.now();
   vibrate(); beep();
+  var sc=parseScScan(text);
+  if(sc){scOpen(sc);return;}
   var pk=parsePackScan(text);
-  if(pk){openBoxNo(pk.boxNo, pk.boxSeq||0);return;}            // PK / "PK-... BOX k/N" -> packing list
+  if(pk){openBoxNo(pk.boxNo, pk.boxSeq||0);return;}
+  if(MODE==="count"&&SC.view==="work"&&SC.work==="count"&&scCur()){scScan(text);return;}
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){pkScan(text);return;}
   var hits=lookup(text);
   showHits(hits, text);
@@ -1389,6 +1511,7 @@ function searchManual(){
   if(!q){$("q").focus();return;}
   var pksc=parsePackScan(q);
   if(pksc){hideSug();$("q").value="";$("q").blur();openBoxNo(pksc.boxNo, pksc.boxSeq||0);return;}
+  if(MODE==="count"&&SC.view==="work"&&scCur()){hideSug();$("q").value="";$("q").blur();scScan(q,true);return;}
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){hideSug();$("q").value="";$("q").blur();pkScan(q,true);return;}
   var hits=lookup(q);
   if(!hits&&SUGS.length) hits=[SUGS[0].row];
@@ -1425,7 +1548,7 @@ function onCat(data){
   }
   if(onCat.started) return;
   onCat.started=true;
-  if(MODE==="info"||PKVIEW==="box"){ if(camUserOn) startCam(); else showCamOffUi(); }
+  if(MODE==="info"||PKVIEW==="box"||(MODE==="count"&&SC.view==="work"&&SC.work==="count")){ if(camUserOn) startCam(); else showCamOffUi(); }
 }
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
 function onCatFail(err){
@@ -1687,6 +1810,7 @@ function fillDatalist(id, items){
   });
 }
 function fillPlaceLists(){
+  if($("sc-ctr-list")) fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
   var counters=(pkCounters||[]).map(counterLabel);
   fillDatalist("ship-list", SHIP_PRESETS.concat(counters).concat(shipList()));
   fillDatalist("from-list", counters.concat(fromList()));
@@ -1699,11 +1823,13 @@ function loadCounters(){
 
 /* ---------- tabs / views ---------- */
 function setTab(t,noShow){
-  MODE=t==="pack"?"pack":"info";
+  MODE=t==="pack"?"pack":(t==="count"?"count":"info");
   try{localStorage.setItem(TABKEY,MODE);}catch(e){}
   $("tab-info").classList.toggle("on",MODE==="info");
   $("tab-pack").classList.toggle("on",MODE==="pack");
+  if($("tab-count")) $("tab-count").classList.toggle("on",MODE==="count");
   document.body.classList.toggle("mode-pack",MODE==="pack");
+  document.body.classList.toggle("mode-count",MODE==="count");
   hideSug();
   closeSheet(false);
   if(MODE==="info"){
@@ -1711,6 +1837,9 @@ function setTab(t,noShow){
     $("q").placeholder="บาร์โค้ด / SKU / ชื่อสินค้า";
     show($("out"),false); show($("scan"),true);
     camWanted();
+  }else if(MODE==="count"){
+    show($("out"),false);
+    if(!noShow) scShow(scCur()?"work":"home");
   }else if(!noShow){
     show($("out"),false);
     pkShow(curBox()?"box":"home");
@@ -1723,7 +1852,7 @@ function camWanted(){
   if(camPaused&&scanner){resumeCam();return;}
   startCam();
 }
-function pkHideAll(){["pk-head","pk-body","pk-home","pk-form","pk-view","pk-label"].forEach(function(id){show($(id),false);});}
+function pkHideAll(){["pk-head","pk-body","pk-home","pk-form","pk-view","pk-label","sc-root"].forEach(function(id){if($(id)) show($(id),false);});}
 function pkShow(v){
   PKVIEW=v;
   pkHideAll();
@@ -2893,10 +3022,678 @@ function selectedCsv(){
     .then(function(){pkSyncSel();});
 }
 
+
+var SCKEY="productInfo.count.v1", SCNAME="productInfo.count.by";
+var SC={sessions:[],cur:"",view:"home",work:"count",mode:"scan",loc:"",hideZero:true,cat:"ALL",brands:[],eanMem:{},queue:[],pendingSoh:null,sess:null,imp:null,stage:null,flushing:false};
+var SC_C1H=["No","ItemNo FDA","EAN CODE Packaging","QTY","Location","EAN CODE","SKU","ItemDescription","Group","Check SKU","Check BarCode","TimeStamp"];
+function parseScScan(text){
+  var t=String(text||"").trim();
+  var m=/^SC-(\d{6})-(\d{3,})\b/i.exec(t);
+  return m?("SC-"+m[1]+"-"+m[2]).toUpperCase():"";
+}
+function scCur(){return SC.sess||null;}
+function scTime(d){d=d||new Date();return formatLoadTime(d)+":"+pad(d.getSeconds());}
+function scLoadStore(){
+  try{
+    var d=JSON.parse(localStorage.getItem(SCKEY)||"null");
+    if(d){SC.queue=d.queue||[];SC.pendingSoh=d.pendingSoh||null;SC.mode=d.mode||"scan";SC.loc=d.loc||"";SC.hideZero=d.hideZero!==false;SC.eanMem=d.eanMem||{};}
+  }catch(e){}
+}
+function scPersist(){
+  try{localStorage.setItem(SCKEY,JSON.stringify({queue:SC.queue,pendingSoh:SC.pendingSoh,mode:SC.mode,loc:SC.loc,hideZero:SC.hideZero,eanMem:SC.eanMem}));}catch(e){}
+}
+function scBy(){var n="";try{n=localStorage.getItem(SCNAME)||"";}catch(e){} return n||(SC.sess&&SC.sess.countedBy)||packedByName()||"";}
+function scInit(){
+  scLoadStore();
+  if($("sc-loc")) $("sc-loc").value=SC.loc;
+  fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
+  $("sc-new").onclick=function(){scForm();};
+  $("sc-reload").onclick=function(){scRefreshList($("sc-q").value.trim());};
+  $("sc-q").addEventListener("input",function(){clearTimeout(scInit.qt);scInit.qt=setTimeout(function(){scRefreshList($("sc-q").value.trim());},500);});
+  $("sc-q").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();var v=$("sc-q").value.trim();var n=parseScScan(v);if(n) scOpen(n); else scRefreshList(v);}});
+  $("sc-f-ok").onclick=scFormSubmit;
+  $("sc-f-cancel").onclick=function(){scShow("home");};
+  $("sc-homebtn").onclick=function(){scFlush();scShow("home");};
+  $("sc-sub").addEventListener("click",function(e){var b=e.target.closest("button[data-w]");if(b) scWork(b.getAttribute("data-w"));});
+  $("sc-mode").addEventListener("click",function(e){var b=e.target.closest("button[data-m]");if(!b)return;SC.mode=b.getAttribute("data-m");scPersist();scRenderCount();});
+  $("sc-loc").addEventListener("change",function(){SC.loc=$("sc-loc").value.trim();scPersist();});
+  $("sc-file").addEventListener("change",scOnFile);
+  $("sc-br-all").onclick=function(){scTickBrands(true);};
+  $("sc-br-none").onclick=function(){scTickBrands(false);};
+  $("sc-imp-save").onclick=scSaveImport;
+  $("sc-zero").checked=!SC.hideZero;
+  $("sc-zero").onchange=function(){SC.hideZero=!$("sc-zero").checked;scPersist();scRenderRec();};
+  $("sc-x-sum").onclick=function(){scExport("sum");};
+  $("sc-x-rec").onclick=function(){scExport("rec");};
+  $("sc-x-log").onclick=function(){scExport("log");};
+  $("sc-lines").addEventListener("click",scLineClick);
+  $("sc-rfilt").addEventListener("click",function(e){var b=e.target.closest("button[data-f]");if(!b)return;SC.rfilt=b.getAttribute("data-f");scRenderRec();});
+  document.addEventListener("visibilitychange",function(){if(document.hidden) scFlush(); else if(MODE==="count"&&scCur()) scPull();});
+  scRefreshList("");
+}
+function scShow(v){
+  pkHideAll();
+  show($("sc-root"),true);
+  SC.view=v==="form"?"form":(v==="work"&&scCur()?"work":"home");
+  show($("sc-home"),SC.view==="home");
+  show($("sc-form"),SC.view==="form");
+  show($("sc-work"),SC.view==="work");
+  if(SC.view==="home"){show($("scan"),false);scRefreshList($("sc-q")?$("sc-q").value.trim():"");}
+  else if(SC.view==="form"){show($("scan"),false);}
+  else {scWork(SC.work||"count");}
+}
+function scWork(w){
+  SC.work=w||"count";
+  ["import","count","rec","log","exp"].forEach(function(k){
+    var pane=$(k==="count"?"sc-countp":k==="log"?"sc-logp":k==="rec"?"sc-rec":k==="exp"?"sc-exp":"sc-import");
+    if(pane) show(pane, SC.work===k);
+  });
+  [].forEach.call($("sc-sub").querySelectorAll("button[data-w]"),function(b){b.classList.toggle("on",b.getAttribute("data-w")===SC.work);});
+  var needCam=SC.work==="count";
+  show($("scan"),needCam);
+  $("q").placeholder=needCam?"บาร์โค้ด / SKU / ชื่อสินค้า":$("q").placeholder;
+  if(needCam) camWanted(); else pauseCam();
+  scRenderHead();
+  if(SC.work==="count") scRenderCount();
+  else if(SC.work==="rec") scRenderRec();
+  else if(SC.work==="log") scRenderLog();
+  else if(SC.work==="import") scRenderImport();
+}
+function scRenderHead(){
+  var s=scCur(); if(!s) return;
+  $("sc-no").textContent=s.sessionNo||"";
+  $("sc-meta").innerHTML=esc(s.counterName||s.counterCode||"")+"<br>"+esc(s.countDate||"")+" · "+esc(s.countedBy||"");
+}
+function scForm(){
+  var d=new Date();
+  $("sc-f-date").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+  $("sc-f-by").value=scBy();
+  $("sc-f-ctr").value="";
+  fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
+  scShow("form");
+}
+function scParseCtr(v){
+  v=String(v||"").trim();
+  var i=v.indexOf(" · ");
+  if(i>0) return {code:v.slice(0,i).trim(),name:v.slice(i+3).trim()};
+  var hit=(pkCounters||[]).filter(function(c){return c.code===v||c.name===v||((c.code+" "+c.name)===v);})[0];
+  return hit?{code:hit.code,name:hit.name}:{code:"",name:v};
+}
+function scFormSubmit(){
+  var ctr=scParseCtr($("sc-f-ctr").value), by=$("sc-f-by").value.trim(), dt=$("sc-f-date").value;
+  if(!ctr.code&&!ctr.name){toast("เลือกเคาน์เตอร์");return;}
+  if(!by){toast("ใส่ชื่อผู้ตรวจนับ");return;}
+  var date="";
+  if(dt){var p=dt.split("-");date=p[2]+"/"+p[1]+"/"+p[0];}
+  try{localStorage.setItem(SCNAME,by);}catch(e){}
+  var client="sc-"+uid();
+  toast("กำลังสร้างรอบนับ…");
+  apiPost({action:"newsess",session:{counterCode:ctr.code,counterName:ctr.name,countDate:date,countedBy:by,clientId:client}}).then(function(r){
+    if(!r||!r.ok||!r.session){toast((r&&r.error)||"สร้างไม่สำเร็จ");return;}
+    SC.sess=r.session; SC.sess.soh=SC.sess.soh||[]; SC.sess.lines=SC.sess.lines||[];
+    scShow("work"); scWork("import");
+    toast("ได้เลข "+r.session.sessionNo);
+  }).catch(function(){toast("ออฟไลน์ — ลองอีกครั้ง");});
+}
+function scCard(s){
+  return '<div class="bx" data-no="'+esc(s.sessionNo)+'"><div class="bx-t">'+esc(s.sessionNo)+'</div><div class="bx-s">'+esc(s.counterName||s.counterCode||"")+'</div><div class="bx-m">'+esc(s.countDate||"")+' · '+esc(s.countedBy||"")+' · นับ '+(s.totalCounted||0)+' · SOH '+(s.sohRows||0)+'</div><div class="sc-actions" style="margin-top:8px"><button type="button" class="btn2 sc-open" style="flex:none;margin:0;padding:6px 12px">เปิด</button><button type="button" class="btn2 sc-del" style="flex:none;margin:0;padding:6px 12px">ลบ</button></div></div>';
+}
+function scRefreshList(q){
+  apiGet("sessions",{q:q||"",limit:80}).then(function(r){
+    SC.sessions=(r&&r.sessions)||[];
+    var el=$("sc-list");
+    if(!el) return;
+    if(!SC.sessions.length){el.innerHTML='<div class="sc-empty">ยังไม่มีรอบนับ</div>';return;}
+    el.innerHTML=SC.sessions.map(scCard).join("");
+    el.onclick=function(e){
+      var card=e.target.closest(".bx"); if(!card) return;
+      var no=card.getAttribute("data-no");
+      if(e.target.classList.contains("sc-del")){e.stopPropagation();scDelete(no);return;}
+      scOpen(no);
+    };
+  }).catch(function(){if($("sc-list")) $("sc-list").innerHTML='<div class="sc-empty">โหลดรายการไม่ได้</div>';});
+}
+function scDelete(no){
+  if(!confirm("ลบรอบนับ "+no+" ? (soft delete)")) return;
+  apiPost({action:"deletesess",sessionNo:no,deletedBy:scBy()}).then(function(r){
+    if(SC.sess&&SC.sess.sessionNo===no){SC.sess=null;scShow("home");}
+    scRefreshList($("sc-q").value.trim());
+    toast(r&&r.ok?"ลบแล้ว":((r&&r.error)||"ลบไม่สำเร็จ"));
+  });
+}
+function scOpen(no){
+  no=parseScScan(no)||String(no||"").trim();
+  if(!no) return;
+  setTab("count",true);
+  apiGet("session",{no:no}).then(function(r){
+    if(!r||!r.ok){toast((r&&r.error)||"ไม่พบรอบนับ");scShow("home");return;}
+    SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
+    scMergeQueue();
+    scShow("work"); scWork(SC.sess.soh&&SC.sess.soh.length?"count":"import");
+    scFlush();
+  }).catch(function(){toast("โหลดเซสชันไม่ได้");});
+}
+function scMergeQueue(){
+  if(!SC.sess) return;
+  var no=SC.sess.sessionNo, have={};
+  (SC.sess.lines||[]).forEach(function(l){if(l.eventId) have[l.eventId]=1;});
+  SC.queue.forEach(function(q){
+    if(q.sessionNo!==no) return;
+    (q.lines||[]).forEach(function(l){if(!l.eventId||!have[l.eventId]){SC.sess.lines.push(l);if(l.eventId) have[l.eventId]=1;}});
+  });
+}
+function scQueueLines(lines){
+  if(!SC.sess||!lines||!lines.length) return;
+  var no=SC.sess.sessionNo;
+  var q=SC.queue.filter(function(x){return x.sessionNo===no;})[0];
+  if(!q){q={sessionNo:no,lines:[]};SC.queue.push(q);}
+  lines.forEach(function(l){q.lines.push(l);SC.sess.lines.push(l);});
+  scPersist();
+  scRenderCount(); scRenderHead();
+  clearTimeout(scQueueLines.t); scQueueLines.t=setTimeout(scFlush,2500);
+}
+function scFlush(){
+  if(SC.flushing) return Promise.resolve();
+  var jobs=[];
+  if(SC.pendingSoh) jobs.push(SC.pendingSoh);
+  SC.queue.forEach(function(q){if(q.lines&&q.lines.length) jobs.push({type:"lines",sessionNo:q.sessionNo,lines:q.lines.slice()});});
+  if(!jobs.length){if($("sc-unsync")) $("sc-unsync").textContent="";return Promise.resolve();}
+  SC.flushing=true;
+  if($("sc-unsync")) $("sc-unsync").textContent="รอซิงก์ "+jobs.reduce(function(n,j){return n+(j.rows?j.rows.length:(j.lines||[]).length);},0);
+  var chain=Promise.resolve();
+  jobs.forEach(function(j){
+    chain=chain.then(function(){
+      if(j.type==="soh"||j.rows) return apiPost({action:"replacescoh",sessionNo:j.sessionNo,sohFile:j.sohFile,sohAsOf:j.sohAsOf,brands:j.brands,countBrands:j.countBrands,rows:j.rows});
+      return apiPost({action:"appendsclines",sessionNo:j.sessionNo,lines:j.lines});
+    }).then(function(r){
+      if(!r||!r.ok) throw new Error((r&&r.error)||"flush fail");
+      if(j.type==="soh"||j.rows){if(SC.pendingSoh&&SC.pendingSoh.sessionNo===j.sessionNo) SC.pendingSoh=null; if(r.session) Object.assign(SC.sess||{},r.session);}
+      else {
+        SC.queue=SC.queue.map(function(q){
+          if(q.sessionNo!==j.sessionNo) return q;
+          var sent={}; (j.lines||[]).forEach(function(l){if(l.eventId) sent[l.eventId]=1;});
+          q.lines=(q.lines||[]).filter(function(l){return !l.eventId||!sent[l.eventId];});
+          return q;
+        }).filter(function(q){return q.lines&&q.lines.length;});
+        if(r.session) Object.assign(SC.sess||{},r.session);
+      }
+      scPersist();
+    });
+  });
+  return chain.then(function(){SC.flushing=false;if($("sc-unsync")) $("sc-unsync").textContent="";}).catch(function(){SC.flushing=false;if($("sc-unsync")) $("sc-unsync").textContent="ซิงก์ไม่สำเร็จ — จะลองใหม่";});
+}
+function scPull(){
+  if(!SC.sess) return;
+  var no=SC.sess.sessionNo;
+  apiGet("session",{no:no}).then(function(r){
+    if(!r||!r.ok) return;
+    SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
+    scMergeQueue();
+    if(SC.view==="work"){scRenderHead(); if(SC.work==="count") scRenderCount(); if(SC.work==="rec") scRenderRec(); if(SC.work==="log") scRenderLog();}
+  }).catch(function(){});
+}
+
+/* ===== POS SOH parser ===== */
+function scStripTick(s){return String(s==null?"":s).replace(/^['\u2018\u2019]+/,"").trim();}
+function scNormH(h){return String(h||"").replace(/\s+/g," ").trim().toLowerCase();}
+var SC_AL={sku:["รหัสสินค้า","sku","itemno","item no","item number","itemcode","code"],barcode:["รหัสบาร์โค้ด","barcode","ean","ean code","bar code","บาร์โค้ด"],brand:["หมวดหมู่","brand","category","หมวด"],desc:["ชื่อสินค้า","description","name","desc","สินค้า"],qty:["จำนวนสินค้าคงเหลือ","qty","quantity","soh","on hand","จำนวนคงเหลือ","จำนวน"],avgCost:["ราคาทุนเฉลี่ย","avg cost","average cost","cost"],value:["มูลค่ารวม","value","amount","มูลค่า"]};
+function scGuessMap(header){
+  var map={}, used={};
+  Object.keys(SC_AL).forEach(function(k){
+    for(var i=0;i<header.length;i++){
+      if(used[i]) continue;
+      var h=scNormH(header[i]);
+      if(SC_AL[k].some(function(a){return h===a||h.indexOf(a)>=0;})){map[k]=i;used[i]=1;return;}
+    }
+  });
+  return map;
+}
+function scParseHtmlTables(html){
+  var tables=[], tRe=/<table[\s\S]*?<\/table>/gi, t;
+  while((t=tRe.exec(html))){
+    var rows=[], rRe=/<tr[\s\S]*?<\/tr>/gi, r, inner=t[0];
+    while((r=rRe.exec(inner))){
+      var cells=[], cRe=/<t[dh]([^>]*)>([\s\S]*?)<\/t[dh]>/gi, c;
+      while((c=cRe.exec(r[0]))){
+        var val=c[2].replace(/<[^>]+>/g," ").replace(/&nbsp;/gi," ").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/\s+/g," ").trim();
+        var span=1, m=/colspan\s*=\s*['"]?(\d+)/i.exec(c[1]||"");
+        if(m) span=+m[1];
+        cells.push(val);
+        for(var i=1;i<span;i++) cells.push("");
+      }
+      if(cells.some(function(x){return String(x).trim();})) rows.push(cells);
+    }
+    if(rows.length) tables.push(rows);
+  }
+  return tables;
+}
+function scParseCsv(text){
+  var rows=[], i=0, cur=[], cell="", q=false;
+  text=String(text||"").replace(/^\ufeff/,"");
+  function endCell(){cur.push(cell);cell="";}
+  function endRow(){endCell();if(cur.some(function(x){return String(x).trim();})) rows.push(cur);cur=[];}
+  while(i<text.length){
+    var ch=text.charAt(i);
+    if(q){ if(ch==='"'&&text.charAt(i+1)==='"'){cell+='"';i+=2;continue;} if(ch==='"'){q=false;i++;continue;} cell+=ch;i++;continue; }
+    if(ch==='"'){q=true;i++;continue;}
+    if(ch===','||ch==='\t'||ch===';'){endCell();i++;continue;}
+    if(ch==='\n'){endRow();i++;continue;}
+    if(ch==='\r'){i++;continue;}
+    cell+=ch;i++;
+  }
+  if(cell||cur.length) endRow();
+  return rows;
+}
+function scRowsToSoh(rows, fileName){
+  var headerI=-1, i, j;
+  for(i=0;i<Math.min(rows.length,8);i++){
+    var joined=rows[i].map(scNormH).join("|");
+    if(/รหัสสินค้า|barcode|\bsku\b/.test(joined)&&(/จำนวน|qty|soh|on hand/.test(joined))){headerI=i;break;}
+  }
+  if(headerI<0) return {ok:false,error:"ไม่พบแถวหัวตาราง SKU/จำนวน",fileName:fileName,rows:[],header:[],map:{},title:"",brands:[]};
+  var header=rows[headerI].map(function(h){return String(h||"").replace(/\s+/g," ").trim();});
+  var title="";
+  for(j=0;j<headerI;j++){var t=rows[j].filter(function(x){return String(x||"").trim();}).join(" "); if(t){title=t;break;}}
+  var map=scGuessMap(header);
+  var out=[], brands={}, issues={noSku:0,badQty:0};
+  for(i=headerI+1;i<rows.length;i++){
+    var r=rows[i]||[];
+    function cell(k){return map[k]==null?"":scStripTick(r[map[k]]); }
+    var sku=cell("sku"), qtyS=cell("qty"), qty=Number(String(qtyS).replace(/,/g,""));
+    if(!sku&&!cell("barcode")&&!cell("desc")) continue;
+    if(!sku) issues.noSku++;
+    if(!isFinite(qty)){qty=0;issues.badQty++;}
+    var brand=cell("brand");
+    if(brand) brands[brand]=(brands[brand]||0)+1;
+    out.push({sku:sku,barcode:cell("barcode"),brand:brand,desc:cell("desc"),qty:qty,avgCost:Number(String(cell("avgCost")).replace(/,/g,""))||0,value:Number(String(cell("value")).replace(/,/g,""))||0,line:out.length+1});
+  }
+  var brandList=Object.keys(brands).sort(function(a,b){return brands[b]-brands[a]||a.localeCompare(b);});
+  return {ok:true,fileName:fileName||"",title:title,header:header,map:map,rows:out,brands:brandList,brandCounts:brands,issues:issues,headerIndex:headerI};
+}
+function parsePosSoh(input, fileName){
+  fileName=fileName||"";
+  var text="", isHtml=false;
+  if(typeof input==="string"){ text=input; }
+  else {
+    var u=null;
+    try{
+      if(input&&input.byteLength!=null) u=new Uint8Array(input.buffer||input, input.byteOffset||0, input.byteLength);
+    }catch(e){ try{ u=new Uint8Array(input); }catch(e2){ u=null; } }
+    if(!u) return {ok:false,error:"empty file",rows:[],brands:[]};
+    var head="", n=Math.min(u.length,200);
+    for(var i=0;i<n;i++) head+=String.fromCharCode(u[i]);
+    if(/^\s*</.test(head)||/html|table|meta/i.test(head)){
+      if(typeof TextDecoder!=="undefined") text=new TextDecoder("utf-8").decode(u);
+      else { text=""; for(var j=0;j<u.length;j++) text+=String.fromCharCode(u[j]); }
+    } else if(typeof XLSX!=="undefined"){
+      var wb=XLSX.read(u,{type:"array",cellDates:true,raw:false});
+      var sh=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:false});
+      return scRowsToSoh(aoa, fileName);
+    } else {
+      return {ok:false,error:"need-xlsx",rows:[],brands:[]};
+    }
+  }
+  text=String(text||"").replace(/^\ufeff/,"");
+  isHtml=/^\s*</.test(text)||/<table/i.test(text);
+  if(isHtml){
+    var tables=scParseHtmlTables(text);
+    var best=null;
+    tables.forEach(function(rows){var r=scRowsToSoh(rows,fileName); if(r.ok&&(!best||r.rows.length>best.rows.length)) best=r;});
+    return best||{ok:false,error:"ไม่พบตารางสินค้า",rows:[],brands:[],fileName:fileName};
+  }
+  return scRowsToSoh(scParseCsv(text), fileName);
+}
+function scLoadXlsx(){
+  return new Promise(function(res,rej){
+    if(typeof XLSX!=="undefined"){res();return;}
+    var s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.onload=function(){res();};
+    s.onerror=function(){rej(new Error("SheetJS load failed"));};
+    document.head.appendChild(s);
+  });
+}
+function scOnFile(ev){
+  var f=ev.target.files&&ev.target.files[0]; ev.target.value="";
+  if(!f) return;
+  var name=f.name||"";
+  toast("กำลังอ่านไฟล์…");
+  var reader=new FileReader();
+  reader.onload=function(){
+    var buf=reader.result;
+    var look=typeof buf==="string"?buf:(function(){var u=new Uint8Array(buf),s="",n=Math.min(u.length,80);for(var i=0;i<n;i++)s+=String.fromCharCode(u[i]);return s;})();
+    var needXlsx=!/^\s*</.test(look)&&!/\.csv$/i.test(name)&&!/\.txt$/i.test(name);
+    var go=function(){
+      var r=parsePosSoh(typeof buf==="string"?buf:new Uint8Array(buf), name);
+      if(!r.ok){toast(r.error||"อ่านไฟล์ไม่ได้");return;}
+      if(/POS019/i.test(name)&&$("sc-f-ctr")&&!$("sc-f-ctr").value){}
+      SC.imp=r; SC.imp.selBrands=r.brands.slice();
+      scRenderImport();
+      toast("พบ "+r.rows.length+" รายการ · "+r.brands.length+" แบรนด์");
+    };
+    if(needXlsx&&typeof XLSX==="undefined") scLoadXlsx().then(go).catch(function(){toast("โหลด SheetJS ไม่ได้");});
+    else go();
+  };
+  if(/\.csv$|\.txt$/i.test(name)) reader.readAsText(f);
+  else reader.readAsArrayBuffer(f);
+}
+function scRenderImport(){
+  var box=$("sc-imap"), r=SC.imp;
+  if(!r){show(box,false);return;}
+  show(box,true);
+  var fields=["sku","barcode","brand","desc","qty","avgCost","value"], labels={sku:"SKU",barcode:"Barcode",brand:"Brand / หมวดหมู่",desc:"Description",qty:"Qty",avgCost:"Avg cost",value:"Value"};
+  var opts='<option value="">—</option>'+r.header.map(function(h,i){return '<option value="'+i+'">'+esc(h||("(col "+(i+1)+")"))+"</option>";}).join("");
+  $("sc-map").innerHTML=fields.map(function(k){return '<label>'+labels[k]+'<select data-k="'+k+'">'+opts+"</select></label>";}).join("");
+  [].forEach.call($("sc-map").querySelectorAll("select"),function(sel){if(r.map[sel.getAttribute("data-k")]!=null) sel.value=String(r.map[sel.getAttribute("data-k")]); sel.onchange=scRemapImport;});
+  var pcs=r.rows.reduce(function(n,x){return n+x.qty;},0);
+  $("sc-imp-info").textContent=(r.title?r.title+" · ":"")+r.rows.length+" SKU · "+pcs+" ชิ้น"+(r.issues&&r.issues.noSku?" · ไม่มี SKU "+r.issues.noSku:"");
+  $("sc-brands").innerHTML=r.brands.map(function(b){var on=r.selBrands.indexOf(b)>=0; return '<label><input type="checkbox"'+(on?" checked":"")+' data-b="'+esc(b)+'"> '+esc(b)+" <span style=\"color:#9a8670\">("+(r.brandCounts[b]||0)+")</span></label>";}).join("")||'<div class="sc-empty">ไฟล์นี้ไม่มีคอลัมน์หมวดหมู่</div>';
+  $("sc-brands").onchange=function(e){var c=e.target; if(c&&c.getAttribute("data-b")){var b=c.getAttribute("data-b"); if(c.checked){if(r.selBrands.indexOf(b)<0) r.selBrands.push(b);} else r.selBrands=r.selBrands.filter(function(x){return x!==b;}); scRenderImportPreview();}};
+  scRenderImportPreview();
+}
+function scRemapImport(){
+  var r=SC.imp; if(!r) return;
+  [].forEach.call($("sc-map").querySelectorAll("select"),function(sel){var k=sel.getAttribute("data-k"), v=sel.value; if(v==="") delete r.map[k]; else r.map[k]=Number(v);});
+  // rebuild rows from raw? we only stored mapped rows. Keep first mapping unless we stored raw tables.
+  scRenderImportPreview();
+}
+function scTickBrands(on){if(!SC.imp)return;SC.imp.selBrands=on?SC.imp.brands.slice():[];scRenderImport();}
+function scImportFiltered(){
+  var r=SC.imp; if(!r) return [];
+  if(!r.brands.length) return r.rows.slice();
+  var allow={}; (r.selBrands||[]).forEach(function(b){allow[b]=1;});
+  return r.rows.filter(function(x){return allow[x.brand];});
+}
+function scRenderImportPreview(){
+  var rows=scImportFiltered().slice(0,25), pcs=scImportFiltered().reduce(function(n,x){return n+x.qty;},0);
+  $("sc-imp-info").textContent=((SC.imp&&SC.imp.title)?SC.imp.title+" · ":"")+(scImportFiltered().length)+" SKU ที่เลือก · "+pcs+" ชิ้น";
+  $("sc-prev").innerHTML="<thead><tr><th>SKU</th><th>Barcode</th><th>Brand</th><th>Desc</th><th>Qty</th></tr></thead><tbody>"+rows.map(function(x){return "<tr><td class='c'>"+esc(x.sku)+"</td><td class='c'>"+esc(x.barcode)+"</td><td>"+esc(x.brand)+"</td><td>"+esc(x.desc)+"</td><td>"+x.qty+"</td></tr>";}).join("")+"</tbody>";
+}
+function scSaveImport(){
+  if(!SC.sess||!SC.imp){toast("ยังไม่มีไฟล์หรือเซสชัน");return;}
+  var rows=scImportFiltered();
+  if(!rows.length){toast("ยังไม่ได้เลือกแบรนด์");return;}
+  rows=rows.map(function(x,i){var g=scBucket(x.sku,x.desc,scMasterGroup(x.sku),""); return Object.assign({},x,{line:i+1,group:g,groupOverride:""});});
+  var brands=SC.imp.selBrands&&SC.imp.selBrands.length?SC.imp.selBrands.slice():[];
+  var payload={type:"soh",sessionNo:SC.sess.sessionNo,sohFile:SC.imp.fileName,sohAsOf:SC.imp.title||SC.sess.countDate,brands:brands,countBrands:brands,rows:rows};
+  SC.pendingSoh=payload;
+  SC.sess.soh=rows; SC.sess.brands=brands.join(", "); SC.sess.countBrands=brands.join(", "); SC.sess.sohRows=rows.length; SC.sess.sohQty=rows.reduce(function(n,x){return n+x.qty;},0);
+  scPersist();
+  toast("กำลังบันทึก "+rows.length+" รายการ…");
+  scFlush().then(function(){toast("นำเข้าแล้ว "+rows.length+" รายการ"); scWork("count");});
+}
+
+function scMasterGroup(sku){
+  var hits=sku?lookup(sku):null; if(!hits||!hits.length) return "";
+  var r=hits.filter(function(x){return String(x.sku).toUpperCase()===String(sku).toUpperCase();})[0]||hits[0];
+  return (r&&(r.group||r.Group))||"";
+}
+function scBucket(sku, desc, masterGroup, override){
+  if(override) return String(override).toUpperCase();
+  var g=String(masterGroup||"").toUpperCase();
+  if(g==="STOCK") return "STOCK";
+  if(g==="TESTER") return "TESTER";
+  if(/GWP|SAMP|MINI|PR GIFT|EXEC GIFT/.test(g)) return "GWPS";
+  var d=String(desc||"").toUpperCase(), s=String(sku||"").toUpperCase();
+  if(/TESTER/.test(d)) return "TESTER";
+  if(/[0-9][FT]$/.test(s)||/TESTER/.test(s)) return "TESTER";
+  if(/GWP|GIFT/.test(d)) return "GWPS";
+  return "STOCK";
+}
+function scRowBucket(row){
+  return scBucket(row.sku, row.desc||row.description, row.group||scMasterGroup(row.sku), row.groupOverride);
+}
+function scCountBrands(){
+  var s=scCur(); if(!s) return [];
+  if(s.countBrands) return String(s.countBrands).split(/,\s*/).filter(Boolean);
+  if(s.brands) return String(s.brands).split(/,\s*/).filter(Boolean);
+  var set={}; (s.soh||[]).forEach(function(r){if(r.brand) set[r.brand]=1;});
+  return Object.keys(set);
+}
+function scActiveBrands(){return SC.brands&&SC.brands.length?SC.brands:scCountBrands();}
+function scPassFilters(row, forRec){
+  var brands=scActiveBrands();
+  if(brands.length&&row.brand&&brands.indexOf(row.brand)<0) return false;
+  if(SC.cat&&SC.cat!=="ALL"){ if(scRowBucket(row)!==SC.cat) return false; }
+  return true;
+}
+function scNet(){
+  var map={}, lines=(SC.sess&&SC.sess.lines)||[];
+  lines.forEach(function(l){
+    var k=(l.sku||l.scanned||"").toUpperCase(); if(!k) return;
+    if(!map[k]) map[k]={sku:l.sku||"",barcode:l.barcode||"",desc:l.desc||"",qty:0,location:"",ts:"",flag:"",locs:{},user:l.user||""};
+    map[k].qty+=(Number(l.qty)||0);
+    if(l.barcode) map[k].barcode=l.barcode;
+    if(l.desc) map[k].desc=l.desc;
+    if(l.sku) map[k].sku=l.sku;
+    if(l.flag) map[k].flag=l.flag;
+    if(l.location) map[k].locs[l.location]=1;
+    if(l.ts) map[k].ts=l.ts;
+  });
+  Object.keys(map).forEach(function(k){var locs=Object.keys(map[k].locs); map[k].location=locs.length===1?locs[0]:"";});
+  return map;
+}
+function scFindSoh(sku, barcode){
+  var soh=(SC.sess&&SC.sess.soh)||[], su=String(sku||"").toUpperCase(), bu=String(barcode||"").toUpperCase();
+  var hit=soh.filter(function(r){return su&&String(r.sku).toUpperCase()===su;})[0];
+  if(hit) return hit;
+  if(bu) return soh.filter(function(r){return String(r.barcode).toUpperCase()===bu;})[0]||null;
+  return null;
+}
+function scResolve(raw){
+  raw=String(raw||"").trim();
+  var exact=lookup(raw)||[];
+  var skuHits=exact.filter(function(r){return String(r.sku).toUpperCase()===norm(raw).toUpperCase()||String(r.sku)===raw;});
+  var eanHits=exact.filter(function(r){return [r.ean1,r.ean2,r.ean3,r.ean].some(function(e){return e&&String(e)===raw;});});
+  var soh=(SC.sess&&SC.sess.soh)||[];
+  var sohSku=soh.filter(function(r){return String(r.sku).toUpperCase()===raw.toUpperCase();});
+  var sohEan=soh.filter(function(r){return r.barcode&&String(r.barcode)===raw;});
+  var bySku={};
+  function add(r, from){
+    var sku=r.sku||r.SKU; if(!sku) return;
+    var k=String(sku).toUpperCase();
+    if(!bySku[k]) bySku[k]={sku:sku,barcode:r.barcode||r.ean1||r.ean||"",desc:r.desc||r.description||r.name||"",brand:r.brand||"",group:r.group||r.Group||"",from:from,pos:scFindSoh(sku,r.barcode||r.ean1)};
+    else if(!bySku[k].barcode) bySku[k].barcode=r.barcode||r.ean1||"";
+  }
+  skuHits.forEach(function(r){add(r,"sku");});
+  if(!skuHits.length) sohSku.forEach(function(r){add(r,"soh");});
+  eanHits.forEach(function(r){add(r,"ean");});
+  sohEan.forEach(function(r){add(r,"soh-ean");});
+  return {raw:raw, cands:Object.keys(bySku).map(function(k){return bySku[k];})};
+}
+function scScan(text, manual){
+  if(!SC.sess){toast("ยังไม่ได้เปิดรอบนับ");return;}
+  SC.work="count"; scWork("count");
+  var r=scResolve(text);
+  if(r.cands.length>1){
+    var mem=SC.eanMem[r.raw];
+    if(mem&&r.cands.some(function(c){return c.sku===mem;})){scAccept(r.cands.filter(function(c){return c.sku===mem;})[0], r.raw, {flag:"SHARED EAN",remembered:true});return;}
+    scPick(r, function(c){SC.eanMem[r.raw]=c.sku;scPersist();scAccept(c,r.raw,{flag:"SHARED EAN"});});
+    return;
+  }
+  if(r.cands.length===1){scAccept(r.cands[0], r.raw, {flag:""});return;}
+  scAccept({sku:"",barcode:/^\d{8,14}$/.test(text)?text:"",desc:"",brand:""}, text, {flag:"NOT IN MASTER"});
+}
+function scPick(res, onPick){
+  var tes=res.cands.filter(function(c){return scBucket(c.sku,c.desc,c.group,"")==="TESTER";});
+  var body=openSheet("เลือก SKU · "+res.raw, "บาร์โค้ดนี้ตรงหลายรหัส — เลือกก่อนนับ (จำในรอบนี้)");
+  body.innerHTML='<div class="sc-chips"><button type="button" class="on" id="sc-pk-all">ทั้งหมด ('+res.cands.length+')</button>'+(tes.length?'<button type="button" id="sc-pk-t">Tester ('+tes.length+')</button>':"")+'</div><div id="sc-pk-list"></div>';
+  function draw(list){
+    $("sc-pk-list").innerHTML=list.map(function(c,i){
+      var pos=c.pos?("POS "+c.pos.qty):"ไม่ได้อยู่ใน SOH";
+      return '<button type="button" class="sug-item" data-i="'+i+'"><div><b>'+esc(c.sku)+"</b> "+esc(c.desc)+'</div><div class="sug-meta">'+esc(c.brand||"")+" · "+pos+"</div></button>";
+    }).join("");
+    $("sc-pk-list").onclick=function(e){var b=e.target.closest("[data-i]");if(!b)return; closeSheet(false); onPick(list[+b.getAttribute("data-i")]);};
+  }
+  draw(res.cands);
+  if($("sc-pk-all")) $("sc-pk-all").onclick=function(){draw(res.cands);};
+  if($("sc-pk-t")) $("sc-pk-t").onclick=function(){draw(tes.length?tes:res.cands);};
+}
+function scAccept(c, raw, opt){
+  opt=opt||{};
+  var rec={eventId:uid(),kind:"count",refEventId:"",ts:scTime(),user:scBy(),location:($("sc-loc")&&$("sc-loc").value.trim())||SC.loc,mode:SC.mode,scanned:raw,sku:c.sku||"",barcode:c.barcode||"",desc:c.desc||"",qty:1,flag:opt.flag||(!c.sku?"NOT IN MASTER":"")};
+  if(SC.mode==="key"){SC.stage=rec;scRenderStage();return;}
+  scQueueLines([rec]);
+  toast((rec.sku||rec.scanned)+" +1");
+}
+function scRenderStage(){
+  var el=$("sc-stage"); if(!el) return;
+  if(!SC.stage){show(el,false);return;}
+  var s=SC.stage;
+  show(el,true);
+  el.innerHTML='<div class="nm">'+esc(s.sku||s.scanned)+" · "+esc(s.desc||"ไม่พบในมาสเตอร์")+'</div><div style="margin-top:6px">จำนวน <input id="sc-qty" type="number" inputmode="numeric" value="" style="width:100px;font-size:20px;font-weight:700"></div><div class="sc-pad">'+[1,2,3,4,5,6,7,8,9,"⌫",0,"Enter"].map(function(k){return '<button type="button" data-k="'+k+'"'+(k==="Enter"?' class="ok"':"")+">"+k+"</button>";}).join("")+"</div><button type='button' class='btn2' id='sc-stage-x' style='margin-top:8px;width:100%'>ยกเลิก</button>";
+  var inp=$("sc-qty"); inp.focus();
+  function commit(){
+    var n=Number(inp.value); if(!isFinite(n)||n===0){toast("ใส่จำนวน");return;}
+    var rec=Object.assign({},SC.stage,{qty:n,eventId:uid(),ts:scTime()});
+    SC.stage=null; show(el,false);
+    scQueueLines([rec]);
+    toast((rec.sku||rec.scanned)+" × "+n);
+  }
+  el.querySelector(".sc-pad").onclick=function(e){
+    var b=e.target.closest("button"); if(!b) return;
+    var k=b.getAttribute("data-k");
+    if(k==="Enter"){commit();return;}
+    if(k==="⌫"){inp.value=String(inp.value||"").slice(0,-1);return;}
+    inp.value=String(inp.value||"")+k;
+  };
+  inp.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();commit();}};
+  $("sc-stage-x").onclick=function(){SC.stage=null;show(el,false);};
+}
+function scRenderCount(){
+  if(!SC.sess) return;
+  [].forEach.call($("sc-mode").querySelectorAll("button"),function(b){b.classList.toggle("on",b.getAttribute("data-m")===SC.mode);});
+  $("sc-cat").innerHTML=[["ALL","ทั้งหมด"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"]].map(function(x){return '<button type="button" data-c="'+x[0]+'"'+(SC.cat===x[0]?' class="on"':"")+">"+x[1]+"</button>";}).join("");
+  $("sc-cat").onclick=function(e){var b=e.target.closest("[data-c]");if(!b)return;SC.cat=b.getAttribute("data-c");scRenderCount();};
+  var all=scCountBrands();
+  var act=scActiveBrands();
+  $("sc-brandf").innerHTML=all.map(function(b){return '<button type="button" data-b="'+esc(b)+'"'+(act.indexOf(b)>=0?' class="on"':"")+">"+esc(b)+"</button>";}).join("");
+  $("sc-brandf").onclick=function(e){
+    var b=e.target.closest("[data-b]"); if(!b) return;
+    var name=b.getAttribute("data-b"), on=act.indexOf(name)>=0, next=on?act.filter(function(x){return x!==name;}):act.concat([name]);
+    if(!next.length) next=all.slice();
+    SC.brands=next.length===all.length?[]:next;
+    scRenderCount();
+  };
+  scRenderStage();
+  var net=scNet(), soh=(SC.sess.soh||[]), rows=[];
+  Object.keys(net).forEach(function(k){
+    var n=net[k], rec=scFindSoh(n.sku,n.barcode)||{sku:n.sku,barcode:n.barcode,desc:n.desc,brand:"",qty:0};
+    var row={sku:n.sku||rec.sku,barcode:n.barcode||rec.barcode,desc:n.desc||rec.desc,brand:rec.brand||"",group:rec.group,groupOverride:rec.groupOverride,qty:n.qty,flag:n.flag,location:n.location};
+    if(scPassFilters(row)&&n.qty!==0) rows.push(row);
+  });
+  rows.sort(function(a,b){return String(a.sku||a.barcode).localeCompare(String(b.sku||b.barcode));});
+  var tot=rows.reduce(function(n,r){return n+r.qty;},0);
+  $("sc-ctot").textContent=rows.length+" รายการ · นับได้ "+tot+" ชิ้น";
+  var uns=(SC.queue||[]).reduce(function(n,q){return n+((q.lines||[]).length);},0)+(SC.pendingSoh?1:0);
+  $("sc-unsync").textContent=uns?("รอซิงก์ "+uns):"";
+  $("sc-lines").innerHTML=rows.length?rows.map(function(r){
+    return '<div class="sc-line" data-sku="'+esc(r.sku||r.barcode)+'"><div class="d"><div class="sku">'+esc(r.sku||r.barcode)+(r.flag?'<span class="sc-flag">'+esc(r.flag)+"</span>":"")+"</div><div>"+esc(r.desc||"")+'</div><div class="bx-m">'+esc(r.brand||"")+" · "+scRowBucket(r)+(r.location?" · "+esc(r.location):"")+'</div></div><div class="q">'+r.qty+'</div><div><button type="button" class="pk-ib sc-ed">แก้</button> <button type="button" class="pk-ib sc-rm">ลบ</button><div><select class="sc-ov" data-sku="'+esc(r.sku)+'"><option value="">'+scRowBucket(r)+'</option><option value="STOCK">Stock</option><option value="TESTER">Tester</option><option value="GWPS">GWPs</option></select></div></div></div>';
+  }).join(""):'<div class="sc-empty">ยังไม่มีรายการนับ — สแกนบาร์โค้ดหรือพิมพ์รหัส</div>';
+}
+function scLineClick(e){
+  var line=e.target.closest(".sc-line"); if(!line) return;
+  var sku=line.getAttribute("data-sku");
+  if(e.target.classList.contains("sc-ov")){
+    e.target.onchange=function(){
+      var v=e.target.value; if(!v||!SC.sess) return;
+      var rec=(SC.sess.soh||[]).filter(function(r){return String(r.sku)===sku;})[0];
+      if(rec) rec.groupOverride=v;
+      apiPost({action:"setsohgroup",sessionNo:SC.sess.sessionNo,sku:sku,groupOverride:v}).then(function(){scRenderCount();scRenderRec();});
+    };
+    return;
+  }
+  if(e.target.classList.contains("sc-ed")){scEditSku(sku);return;}
+  if(e.target.classList.contains("sc-rm")){scVoidSku(sku);}
+}
+function scEditSku(sku){
+  var net=scNet(), n=net[String(sku).toUpperCase()]; if(!n) return;
+  var v=prompt("จำนวนใหม่สำหรับ "+sku, String(n.qty));
+  if(v==null) return;
+  var qty=Number(v); if(!isFinite(qty)){toast("จำนวนไม่ถูกต้อง");return;}
+  var evs=((SC.sess&&SC.sess.lines)||[]).filter(function(l){return (l.sku||l.scanned||"").toUpperCase()===String(sku).toUpperCase()&&l.kind!=="void";});
+  var last=evs[evs.length-1]||{sku:n.sku,barcode:n.barcode,desc:n.desc,scanned:n.sku};
+  var voidId=uid(), newId=uid();
+  scQueueLines([
+    {eventId:voidId,kind:"void",refEventId:last.eventId||"",ts:scTime(),user:scBy(),location:n.location||SC.loc,mode:"key",scanned:last.scanned||sku,sku:n.sku,barcode:n.barcode,desc:n.desc,qty:-n.qty,flag:n.flag||""},
+    {eventId:newId,kind:"count",refEventId:voidId,ts:scTime(),user:scBy(),location:n.location||SC.loc,mode:"key",scanned:last.scanned||sku,sku:n.sku,barcode:n.barcode,desc:n.desc,qty:qty,flag:n.flag||""}
+  ]);
+}
+function scVoidSku(sku){
+  var net=scNet(), n=net[String(sku).toUpperCase()]; if(!n||!n.qty) return;
+  if(!confirm("ลบยอดนับ "+sku+" ("+n.qty+") — เก็บประวัติไว้")) return;
+  scQueueLines([{eventId:uid(),kind:"void",refEventId:"",ts:scTime(),user:scBy(),location:n.location||SC.loc,mode:"key",scanned:n.sku||sku,sku:n.sku,barcode:n.barcode,desc:n.desc,qty:-n.qty,flag:n.flag||""}]);
+}
+function scReconcile(){
+  var soh=(SC.sess&&SC.sess.soh)||[], net=scNet(), seen={}, rows=[];
+  function push(rec, n){
+    var sku=rec.sku||(n&&n.sku)||"", barcode=rec.barcode||(n&&n.barcode)||"", desc=rec.desc||(n&&n.desc)||"", brand=rec.brand||"";
+    var pos=Number(rec.qty)||0, counted=n?n.qty:0, diff=counted-pos;
+    var st=(!rec.sku&&n&&!scFindSoh(n.sku,n.barcode))||(sku&&!soh.some(function(s){return String(s.sku).toUpperCase()===String(sku).toUpperCase();}))?"Not in POS":(counted===0?"Not counted":(diff===0?"Match":(diff<0?"Short":"Over")));
+    var row={sku:sku,barcode:barcode,brand:brand,desc:desc,pos:pos,counted:counted,diff:diff,status:st,group:rec.group,groupOverride:rec.groupOverride,location:n?n.location:""};
+    if(!scPassFilters(row)) return;
+    rows.push(row);
+  }
+  soh.forEach(function(r){
+    var k=String(r.sku).toUpperCase(); seen[k]=1;
+    push(r, net[k]);
+  });
+  Object.keys(net).forEach(function(k){
+    if(seen[k]) return;
+    push({sku:net[k].sku,barcode:net[k].barcode,desc:net[k].desc,brand:"",qty:0}, net[k]);
+  });
+  return rows;
+}
+function scRenderRec(){
+  SC.rfilt=SC.rfilt||"All";
+  var all=scReconcile();
+  var filt={All:function(){return true;},Short:function(r){return r.status==="Short";},Over:function(r){return r.status==="Over";},Match:function(r){return r.status==="Match";},"Not in POS":function(r){return r.status==="Not in POS";},"Not counted":function(r){return r.status==="Not counted"&&( !SC.hideZero || r.pos!==0);}};
+  $("sc-rfilt").innerHTML=Object.keys(filt).map(function(k){return '<button type="button" data-f="'+k+'"'+(SC.rfilt===k?' class="on"':"")+">"+k+"</button>";}).join("");
+  var rows=all.filter(filt[SC.rfilt]||filt.All);
+  var short=all.filter(function(r){return r.status==="Short";}).reduce(function(n,r){return n+r.diff;},0);
+  var over=all.filter(function(r){return r.status==="Over";}).reduce(function(n,r){return n+r.diff;},0);
+  $("sc-rtot").innerHTML="<span>"+rows.length+" แถว</span><span>POS "+all.reduce(function(n,r){return n+r.pos;},0)+" · นับ "+all.reduce(function(n,r){return n+r.counted;},0)+" · ขาด "+short+" · เกิน +"+over+"</span>";
+  $("sc-rtable").innerHTML="<thead><tr><th>SKU</th><th>Desc</th><th>POS</th><th>นับ</th><th>Diff</th></tr></thead><tbody>"+rows.map(function(r){
+    var cls=r.diff<0?"neg":(r.diff>0?"pos":"");
+    var d=r.diff>0?("+"+r.diff):String(r.diff);
+    return "<tr><td class=\"c\">"+esc(r.sku)+"</td><td>"+esc(r.desc)+"</td><td>"+r.pos+"</td><td>"+r.counted+"</td><td class=\"diff "+cls+"\">"+d+"</td></tr>";
+  }).join("")+"</tbody>";
+}
+function scRenderLog(){
+  var lines=((SC.sess&&SC.sess.lines)||[]).slice().reverse();
+  $("sc-ltot").textContent=lines.length+" เหตุการณ์";
+  $("sc-log").innerHTML=lines.length?lines.map(function(l){
+    return '<div class="sc-line"><div class="d"><div class="sku">'+esc(l.sku||l.scanned)+" · "+(l.kind||"count")+(l.flag?'<span class="sc-flag">'+esc(l.flag)+"</span>":"")+"</div><div>"+esc(l.desc||"")+'</div><div class="bx-m">'+esc(l.ts||"")+" · "+esc(l.mode||"")+" · "+esc(l.location||"")+" · "+esc(l.user||"")+"</div></div><div class='q'>"+l.qty+"</div></div>";
+  }).join(""):'<div class="sc-empty">ยังไม่มีปูมสแกน</div>';
+}
+function scExport(kind){
+  if(!SC.sess){toast("ยังไม่มีเซสชัน");return;}
+  var no=SC.sess.sessionNo, rows=[], name=no+"_";
+  if(kind==="rec"){
+    name+="reconcile.csv";
+    rows=[["SKU","Barcode","Brand","Description","POS SOH","Counted","Diff","Status"]].concat(scReconcile().map(function(r){return [r.sku,r.barcode,r.brand,r.desc,r.pos,r.counted,r.diff,r.status];}));
+  } else if(kind==="log"){
+    name+="Check1stStep_log.csv";
+    var lines=(SC.sess.lines||[]).filter(function(l){return scPassFilters({sku:l.sku,barcode:l.barcode,desc:l.desc,brand:(scFindSoh(l.sku,l.barcode)||{}).brand,group:(scFindSoh(l.sku,l.barcode)||{}).group,groupOverride:(scFindSoh(l.sku,l.barcode)||{}).groupOverride});});
+    rows=[SC_C1H.concat(["Mode"])].concat(lines.map(function(l,i){var rec=scFindSoh(l.sku,l.barcode)||{}; return [i+1,l.sku||l.scanned,l.barcode||"",l.qty,l.location||"",l.barcode||"",l.sku||"",l.desc||"",scRowBucket({sku:l.sku,desc:l.desc,group:rec.group,groupOverride:rec.groupOverride}),"","",l.ts||"",l.mode||""];}));
+  } else {
+    name+="Check1stStep.csv";
+    var net=scNet(), keys=Object.keys(net).filter(function(k){
+      var n=net[k], rec=scFindSoh(n.sku,n.barcode)||n;
+      return net[k].qty!==0 && scPassFilters({sku:n.sku,barcode:n.barcode,desc:n.desc,brand:rec.brand,group:rec.group,groupOverride:rec.groupOverride});
+    });
+    rows=[SC_C1H].concat(keys.map(function(k,i){var n=net[k], rec=scFindSoh(n.sku,n.barcode)||{}; return [i+1,n.sku||k,n.barcode||"",n.qty,n.location||"",n.barcode||"",n.sku||"",n.desc||"",scRowBucket({sku:n.sku,desc:n.desc,group:rec.group,groupOverride:rec.groupOverride}),"","",n.ts||""];}));
+  }
+  downloadCsv(name, rows);
+}
+
 function pkInit(){
   pkLoad(); pkDot();
   $("tab-info").onclick=function(){if(MODE!=="info") setTab("info");};
   $("tab-pack").onclick=function(){if(MODE!=="pack") setTab("pack"); else if(PKVIEW!=="box"&&PKVIEW!=="home") pkShow(curBox()?"box":"home");};
+  if($("tab-count")) $("tab-count").onclick=function(){if(MODE!=="count") setTab("count"); else scShow(scCur()?"work":"home");};
+  scInit();
   $("pk-new").onclick=function(){pkNewForm(false);};
   $("pk-reload").onclick=function(){pkRefreshList($("pk-q").value.trim());};
   $("pk-q").addEventListener("input",function(){pkRenderList();clearTimeout(pkInit.qt);pkInit.qt=setTimeout(function(){pkRefreshList($("pk-q").value.trim());},600);});
@@ -2941,7 +3738,7 @@ function pkInit(){
   else if(t==="pack") setTab("pack");
 }
 
-window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;}};
+window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,SCVIEW:SC.view,SCWORK:SC.work,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox(),sc:scCur()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;},parsePosSoh:parsePosSoh,parseScScan:parseScScan,scOpen:scOpen,scScan:scScan,scShow:scShow,scExport:scExport,scReconcile:scReconcile,scBucket:scBucket,scCur:scCur,SC:function(){return SC;}};
 window.__pc={lookup:lookup,showHits:showHits,candidates:candidates,findExact:findExact,buildIndex:buildIndex,CAT:function(){return CATALOG;},showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
 pkInit();
 loadCatalog();
