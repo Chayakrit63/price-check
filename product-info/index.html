@@ -151,6 +151,7 @@ body.mode-count .or,body.mode-count .foot{display:none}
 .sc-flab{font:600 11px Prompt;color:#8b0f14;letter-spacing:.02em;margin:0 0 4px}
 .sc-brands-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;padding-bottom:2px}
 .sc-brand-empty{font:400 12.5px Prompt;color:#9a8670;padding:4px 0}
+.sc-zero-lab{display:flex;gap:8px;align-items:center;font:400 12.5px Prompt;color:#5c4638;margin:8px 0 0}
 #sc-scan-slot{margin:8px 18px 0}
 #sc-scan-slot .cam,body.mode-count #sc-scan-slot .cam{margin:0;height:200px}
 .sc-over-hero{background:#fff;border:1px solid #e3cfae;border-radius:14px;padding:12px 14px;margin:0 0 12px}
@@ -565,6 +566,7 @@ body.typing .tabbar{display:none}
       <div class="sc-chips" id="sc-cat"></div>
       <div class="sc-flab">แบรนด์ · Brand</div>
       <div class="sc-chips sc-brands-row" id="sc-brandf"></div>
+      <label class="sc-zero-lab"><input type="checkbox" id="sc-zero"> แสดงรายการที่ POS = 0</label>
     </div>
     <div id="sc-scan-slot" class="hidden"></div>
     <div class="sc-pane hidden" id="sc-over"></div>
@@ -591,7 +593,6 @@ body.typing .tabbar{display:none}
     </div>
     <div class="sc-pane hidden" id="sc-rec">
       <div class="sc-chips" id="sc-rfilt"></div>
-      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:0 0 8px"><input type="checkbox" id="sc-zero"> แสดง POS ที่คงเหลือ 0 ใน Not counted</label>
       <div class="sc-tot" id="sc-rtot"></div>
       <div style="overflow:auto"><table class="sc-preview sc-rec" id="sc-rtable"></table></div>
     </div>
@@ -3161,8 +3162,10 @@ function scInit(){
   $("sc-br-all").onclick=function(){scTickBrands(true);};
   $("sc-br-none").onclick=function(){scTickBrands(false);};
   $("sc-imp-save").onclick=scSaveImport;
-  $("sc-zero").checked=!SC.hideZero;
-  $("sc-zero").onchange=function(){SC.hideZero=!$("sc-zero").checked;scPersist();scRenderRec();};
+  if($("sc-zero")){
+    $("sc-zero").checked=!SC.hideZero;
+    $("sc-zero").onchange=function(){SC.hideZero=!$("sc-zero").checked;scPersist();if(SC.work==="rec")scRenderRec();else if(SC.work==="count")scRenderCount();else if(SC.work==="over")scRenderOver();};
+  }
   $("sc-x-sum").onclick=function(){scExport("sum");};
   $("sc-x-rec").onclick=function(){scExport("rec");};
   $("sc-x-log").onclick=function(){scExport("log");};
@@ -3192,10 +3195,11 @@ function scWork(w){
   var needCam=SC.work==="count";
   var showFilt=SC.work==="count"||SC.work==="rec";
   if($("sc-filt")) show($("sc-filt"),showFilt);
+  if(!needCam){ try{ pauseCam(); }catch(e){} }
   scParkScan(needCam);
   show($("scan"),needCam);
   $("q").placeholder=needCam?"บาร์โค้ด / SKU / ชื่อสินค้า":$("q").placeholder;
-  if(needCam) camWanted(); else pauseCam();
+  if(needCam) camWanted();
   scRenderHead();
   if(showFilt) scRenderFilt();
   if(SC.work==="over") scRenderOver();
@@ -3275,6 +3279,7 @@ function scOpen(no){
   apiGet({api:"session",no:no}).then(function(r){
     if(!r||!r.ok){toast((r&&r.error)||"ไม่พบรอบนับ");scShow("home");return;}
     SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
+    scNormSohBrands();
     scMergeQueue();
     scShow("work"); scWork(SC.sess.soh&&SC.sess.soh.length?"over":"import");
     scFlush();
@@ -3335,6 +3340,7 @@ function scPull(){
   apiGet({api:"session",no:no}).then(function(r){
     if(!r||!r.ok) return;
     SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
+    scNormSohBrands();
     scMergeQueue();
     if(SC.view==="work"){scRenderHead(); if(SC.work==="count"||SC.work==="rec") scRenderFilt(); if(SC.work==="over") scRenderOver(); if(SC.work==="count") scRenderCount(); if(SC.work==="rec") scRenderRec(); if(SC.work==="log") scRenderLog();}
   }).catch(function(){});
@@ -3514,7 +3520,8 @@ function scImportFiltered(){
 }
 function scRenderImportPreview(){
   var rows=scImportFiltered().slice(0,25), pcs=scImportFiltered().reduce(function(n,x){return n+x.qty;},0);
-  $("sc-imp-info").textContent=((SC.imp&&SC.imp.title)?SC.imp.title+" · ":"")+(scImportFiltered().length)+" SKU ที่เลือก · "+pcs+" ชิ้น";
+  var z=scImportFiltered().filter(function(x){return !x.qty;}).length;
+  $("sc-imp-info").textContent=((SC.imp&&SC.imp.title)?SC.imp.title+" · ":"")+(scImportFiltered().length)+" SKU ที่เลือก · "+pcs+" ชิ้น"+(z?(" · "+z+" รายการที่ POS = 0"):"");
   $("sc-prev").innerHTML="<thead><tr><th>SKU</th><th>Barcode</th><th>Brand</th><th>Desc</th><th>Qty</th></tr></thead><tbody>"+rows.map(function(x){return "<tr><td class='c'>"+esc(x.sku)+"</td><td class='c'>"+esc(x.barcode)+"</td><td>"+esc(x.brand)+"</td><td>"+esc(x.desc)+"</td><td>"+x.qty+"</td></tr>";}).join("")+"</tbody>";
 }
 function scSaveImport(){
@@ -3526,6 +3533,7 @@ function scSaveImport(){
   var payload={type:"soh",sessionNo:SC.sess.sessionNo,sohFile:SC.imp.fileName,sohAsOf:SC.imp.title||SC.sess.countDate,brands:brands,countBrands:brands,rows:rows};
   SC.pendingSoh=payload;
   SC.sess.soh=rows; SC.sess.brands=brands.join(", "); SC.sess.countBrands=brands.join(", "); SC.sess.sohRows=rows.length; SC.sess.sohQty=rows.reduce(function(n,x){return n+x.qty;},0);
+  scNormSohBrands();
   scPersist();
   toast("กำลังบันทึก "+rows.length+" รายการ…");
   scFlush().then(function(){toast("นำเข้าแล้ว "+rows.length+" รายการ"); scWork("over");});
@@ -3551,12 +3559,42 @@ function scBucket(sku, desc, masterGroup, override){
 function scRowBucket(row){
   return scBucket(row.sku, row.desc||row.description, row.group||scMasterGroup(row.sku), row.groupOverride);
 }
+function scBrandOf(r){
+  if(!r) return "";
+  var b=String(r.brand||r.Brand||r.category||r.Category||r["หมวดหมู่"]||"").trim();
+  if(b) return b;
+  var sku=r.sku||r.SKU; if(!sku||typeof lookup!=="function") return "";
+  var hits=lookup(sku); if(!hits||!hits.length) return "";
+  var it=hits.filter(function(x){return String(x.sku).toUpperCase()===String(sku).toUpperCase();})[0]||hits[0];
+  return String((it&&(it.brand||it.Brand))||"").trim();
+}
+function scNormSohBrands(){
+  var s=scCur(); if(!s||!s.soh) return;
+  (s.soh||[]).forEach(function(r){
+    if(!r.sku&&r.SKU) r.sku=r.SKU;
+    if(!r.barcode&&(r.Barcode||r.EAN||r.ean)) r.barcode=r.Barcode||r.EAN||r.ean;
+    if(r.qty==null&&r.Qty!=null) r.qty=Number(r.Qty)||0;
+    if(!r.desc&&(r.Description||r.description)) r.desc=r.Description||r.description;
+    if(!r.group&&r.Group) r.group=r.Group;
+    if(!r.groupOverride&&r.GroupOverride) r.groupOverride=r.GroupOverride;
+    var b=scBrandOf(r); if(b) r.brand=b;
+  });
+}
 function scCountBrands(){
   var s=scCur(); if(!s) return [];
-  if(s.countBrands) return String(s.countBrands).split(/,\s*/).filter(Boolean);
-  if(s.brands) return String(s.brands).split(/,\s*/).filter(Boolean);
-  var set={}; (s.soh||[]).forEach(function(r){if(r.brand) set[r.brand]=1;});
-  return Object.keys(set);
+  var set={};
+  function addOne(b){ b=String(b||"").trim(); if(b) set[b]=1; }
+  function addList(v){
+    if(!v) return;
+    if(Array.isArray(v)) v.forEach(addOne);
+    else String(v).split(/,\s*/).forEach(addOne);
+  }
+  addList(s.countBrands); addList(s.brands);
+  (s.soh||[]).forEach(function(r){ addOne(scBrandOf(r)); });
+  return Object.keys(set).sort(function(a,b){return a.localeCompare(b);});
+}
+function scZeroOk(r){
+  return !SC.hideZero || Number(r.pos)!==0 || Number(r.counted)!==0;
 }
 function scActiveBrands(){return SC.brands&&SC.brands.length?SC.brands:scCountBrands();}
 function scPassFilters(row, forRec){
@@ -3677,7 +3715,7 @@ function scRenderCount(){
   Object.keys(net).forEach(function(k){
     var n=net[k], rec=scFindSoh(n.sku,n.barcode)||{sku:n.sku,barcode:n.barcode,desc:n.desc,brand:"",qty:0};
     var row={sku:n.sku||rec.sku,barcode:n.barcode||rec.barcode,desc:n.desc||rec.desc,brand:rec.brand||"",group:rec.group,groupOverride:rec.groupOverride,qty:n.qty,flag:n.flag,location:n.location};
-    if(scPassFilters(row)&&n.qty!==0) rows.push(row);
+    if(scPassFilters(row)&&n.qty!==0&&scZeroOk({pos:Number(rec.qty)||0,counted:n.qty})) rows.push(row);
   });
   rows.sort(function(a,b){return String(a.sku||a.barcode).localeCompare(String(b.sku||b.barcode));});
   var tot=rows.reduce(function(n,r){return n+r.qty;},0);
@@ -3724,7 +3762,7 @@ function scVoidSku(sku){
 function scReconcile(allRows){
   var soh=(SC.sess&&SC.sess.soh)||[], net=scNet(), seen={}, rows=[];
   function push(rec, n){
-    var sku=rec.sku||(n&&n.sku)||"", barcode=rec.barcode||(n&&n.barcode)||"", desc=rec.desc||(n&&n.desc)||"", brand=rec.brand||"";
+    var sku=rec.sku||rec.SKU||(n&&n.sku)||"", barcode=rec.barcode||(n&&n.barcode)||"", desc=rec.desc||rec.Description||(n&&n.desc)||"", brand=scBrandOf(rec);
     var pos=Number(rec.qty)||0, counted=n?n.qty:0, diff=counted-pos;
     var st=(!rec.sku&&n&&!scFindSoh(n.sku,n.barcode))||(sku&&!soh.some(function(s){return String(s.sku).toUpperCase()===String(sku).toUpperCase();}))?"Not in POS":(counted===0?"Not counted":(diff===0?"Match":(diff<0?"Short":"Over")));
     var row={sku:sku,barcode:barcode,brand:brand,desc:desc,pos:pos,counted:counted,diff:diff,status:st,group:rec.group,groupOverride:rec.groupOverride,location:n?n.location:""};
@@ -3744,9 +3782,10 @@ function scReconcile(allRows){
 function scRenderRec(){
   SC.rfilt=SC.rfilt||"All";
   var all=scReconcile();
-  var filt={All:function(){return true;},Short:function(r){return r.status==="Short";},Over:function(r){return r.status==="Over";},Match:function(r){return r.status==="Match";},"Not in POS":function(r){return r.status==="Not in POS";},"Not counted":function(r){return r.status==="Not counted"&&( !SC.hideZero || r.pos!==0);}};
+  var filt={All:function(){return true;},Short:function(r){return r.status==="Short";},Over:function(r){return r.status==="Over";},Match:function(r){return r.status==="Match";},"Not in POS":function(r){return r.status==="Not in POS";},"Not counted":function(r){return r.status==="Not counted";}};
   $("sc-rfilt").innerHTML=Object.keys(filt).map(function(k){return '<button type="button" data-f="'+k+'"'+(SC.rfilt===k?' class="on"':"")+">"+k+"</button>";}).join("");
-  var rows=all.filter(filt[SC.rfilt]||filt.All);
+  if($("sc-zero")) $("sc-zero").checked=!SC.hideZero;
+  var rows=all.filter(filt[SC.rfilt]||filt.All).filter(scZeroOk);
   var short=all.filter(function(r){return r.status==="Short";}).reduce(function(n,r){return n+r.diff;},0);
   var over=all.filter(function(r){return r.status==="Over";}).reduce(function(n,r){return n+r.diff;},0);
   $("sc-rtot").innerHTML="<span>"+rows.length+" แถว</span><span>POS "+all.reduce(function(n,r){return n+r.pos;},0)+" · นับ "+all.reduce(function(n,r){return n+r.counted;},0)+" · ขาด "+short+" · เกิน +"+over+"</span>";
