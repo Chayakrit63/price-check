@@ -147,6 +147,24 @@ body.mode-count .or,body.mode-count .foot{display:none}
 .sc-sub{display:flex;gap:6px;margin:10px 18px 0;overflow:auto;padding-bottom:2px}
 .sc-sub button{flex:none;border:1px solid #e3cfae;background:#fffdf9;color:#5c4638;border-radius:16px;padding:6px 12px;font:400 12.5px Prompt;cursor:pointer}
 .sc-sub button.on{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.sc-filt{margin:8px 18px 0;background:#fffdf9;border:1px solid #e3cfae;border-radius:14px;padding:8px 10px}
+.sc-flab{font:600 11px Prompt;color:#8b0f14;letter-spacing:.02em;margin:0 0 4px}
+.sc-brands-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;padding-bottom:2px}
+.sc-brand-empty{font:400 12.5px Prompt;color:#9a8670;padding:4px 0}
+#sc-scan-slot{margin:8px 18px 0}
+#sc-scan-slot .cam,body.mode-count #sc-scan-slot .cam{margin:0;height:200px}
+.sc-over-hero{background:#fff;border:1px solid #e3cfae;border-radius:14px;padding:12px 14px;margin:0 0 12px}
+.sc-over-hero .pct{font:700 28px "Bodoni Moda",serif;color:#8b0f14;line-height:1.1}
+.sc-over-hero .nums{font:400 13px Prompt;color:#5c4638;margin-top:6px;line-height:1.45}
+.sc-over-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 14px}
+.sc-over-card{background:#fff;border:1px solid #e3cfae;border-radius:12px;padding:10px 8px;text-align:center;cursor:pointer}
+.sc-over-card .k{font:600 12px Prompt;color:#8b0f14}
+.sc-over-card .v{font:700 12.5px Prompt;color:#2a1a17;margin-top:2px;white-space:nowrap}
+.sc-over-card .s{font:400 11px Prompt;color:#9a8670;margin-top:2px}
+.sc-over h3{margin:0 0 8px;font-size:15px;color:#8b0f14}
+table.sc-over-br{width:100%;font-size:12.5px}
+table.sc-over-br tbody tr{cursor:pointer}
+table.sc-over-br tbody tr:active{background:#f8efe3}
 .sc-pane{margin:10px 18px 0}
 .sc-pane h3{margin:0 0 8px;font-size:15px;color:#8b0f14}
 .sc-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
@@ -518,7 +536,7 @@ body.typing .tabbar{display:none}
 <div class="sc-root hidden" id="sc-root">
   <div id="sc-home">
     <div class="pk-lh" style="margin:14px 18px 8px"><span>นับสต็อก · Stock Count</span><button type="button" class="btn" id="sc-new" style="margin:0;width:auto;padding:8px 14px">+ สร้างรอบนับ</button></div>
-    <div class="row1" style="margin:0 18px 8px"><input id="sc-q" placeholder="ค้นหา SC / เคาน์เตอร์ / ผู้ตรวจ" autocomplete="off"><button type="button" class="pk-ib" id="sc-reload">↻</button></div>
+    <div class="row1" style="margin:0 18px 8px"><input id="sc-q" placeholder="ค้นหา SC / เคาน์เตอร์ / ผู้ตรวจ" autocomplete="off"><button type="button" class="pk-ib" id="sc-reload">↻ รีเฟรช</button></div>
     <div class="sc-pane" style="margin-top:0"><div id="sc-list"></div></div>
   </div>
   <div id="sc-form" class="hidden sc-form">
@@ -535,12 +553,21 @@ body.typing .tabbar{display:none}
       <button type="button" class="pk-ib" id="sc-homebtn">☰ รายการ</button>
     </div>
     <div class="sc-sub" id="sc-sub">
+      <button type="button" data-w="over" class="on">ภาพรวม</button>
       <button type="button" data-w="import">นำเข้า SOH</button>
-      <button type="button" data-w="count" class="on">นับ</button>
+      <button type="button" data-w="count">นับ</button>
       <button type="button" data-w="rec">กระทบยอด</button>
       <button type="button" data-w="log">ปูมสแกน</button>
       <button type="button" data-w="exp">ส่งออก</button>
     </div>
+    <div class="sc-filt hidden" id="sc-filt">
+      <div class="sc-flab">ประเภท · Type</div>
+      <div class="sc-chips" id="sc-cat"></div>
+      <div class="sc-flab">แบรนด์ · Brand</div>
+      <div class="sc-chips sc-brands-row" id="sc-brandf"></div>
+    </div>
+    <div id="sc-scan-slot" class="hidden"></div>
+    <div class="sc-pane hidden" id="sc-over"></div>
     <div class="sc-pane hidden" id="sc-import">
       <h3>นำเข้า POS stock on hand</h3>
       <p class="sc-empty" style="padding-top:0">รองรับไฟล์ POS2U .xls (ตาราง HTML), CSV, XLSX · รหัสสินค้า / บาร์โค้ด / หมวดหมู่ / จำนวน</p>
@@ -555,11 +582,9 @@ body.typing .tabbar{display:none}
         <div class="sc-actions"><button type="button" class="btn" id="sc-imp-save">บันทึกเข้าเซสชัน</button></div>
       </div>
     </div>
-    <div class="sc-pane" id="sc-countp">
+    <div class="sc-pane hidden" id="sc-countp">
       <div class="sc-tog" id="sc-mode"><button type="button" data-m="scan" class="on">สแกน = +1</button><button type="button" data-m="key">สแกนแล้วคีย์จำนวน</button></div>
       <div class="sc-loc"><label>ที่เก็บ · Location</label><input id="sc-loc" list="sc-loc-list" placeholder="Shelf / Stock room / Tester หรือพิมพ์เอง"><datalist id="sc-loc-list"><option value="Shelf"><option value="Stock room"><option value="Tester"></datalist></div>
-      <div class="sc-chips" id="sc-cat"></div>
-      <div class="sc-chips" id="sc-brandf"></div>
       <div id="sc-stage" class="sc-stage hidden"></div>
       <div class="sc-tot"><span id="sc-ctot"></span><span class="sc-unsync" id="sc-unsync"></span></div>
       <div id="sc-lines"></div>
@@ -1697,7 +1722,8 @@ function jsonpGet(url){
     document.head.appendChild(s);
   });
 }
-function apiGet(params){
+function apiGet(params, extra){
+  if(typeof params==="string"){ extra=extra||{}; extra.api=params; params=extra; }
   var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(params[k]==null?"":params[k]);}).join("&");
   var url=API+"?"+qs;
   return withTimeout(fetch(url,{cache:"no-store",redirect:"follow"}).then(function(r){if(!r.ok) throw new Error("http "+r.status);return r.json();}),25000)
@@ -1832,6 +1858,7 @@ function setTab(t,noShow){
   document.body.classList.toggle("mode-count",MODE==="count");
   hideSug();
   closeSheet(false);
+  if(MODE!=="count") scParkScan(false);
   if(MODE==="info"){
     pkHideAll();
     $("q").placeholder="บาร์โค้ด / SKU / ชื่อสินค้า";
@@ -3043,6 +3070,79 @@ function scPersist(){
   try{localStorage.setItem(SCKEY,JSON.stringify({queue:SC.queue,pendingSoh:SC.pendingSoh,mode:SC.mode,loc:SC.loc,hideZero:SC.hideZero,eanMem:SC.eanMem}));}catch(e){}
 }
 function scBy(){var n="";try{n=localStorage.getItem(SCNAME)||"";}catch(e){} return n||(SC.sess&&SC.sess.countedBy)||packedByName()||"";}
+function scParkScan(on){
+  var scan=$("scan"); if(!scan) return;
+  if(!scParkScan.home) scParkScan.home={parent:scan.parentNode,next:scan.nextSibling};
+  var slot=$("sc-scan-slot");
+  if(on&&slot){ slot.appendChild(scan); show(slot,true); }
+  else {
+    var h=scParkScan.home;
+    if(h&&h.parent&&scan.parentNode!==h.parent){
+      if(h.next&&h.next.parentNode===h.parent) h.parent.insertBefore(scan,h.next);
+      else h.parent.appendChild(scan);
+    }
+    if(slot) show(slot,false);
+  }
+}
+function scOnFilt(){
+  if(SC.work==="count") scRenderCount();
+  else if(SC.work==="rec") scRenderRec();
+  else scRenderFilt();
+}
+function scRenderFilt(){
+  var cat=$("sc-cat"), br=$("sc-brandf"); if(!cat||!br) return;
+  SC.cat=SC.cat||"ALL";
+  cat.innerHTML=[["ALL","ทั้งหมด"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"]].map(function(x){return '<button type="button" data-c="'+x[0]+'"'+(SC.cat===x[0]?' class="on"':"")+">"+x[1]+"</button>";}).join("");
+  cat.onclick=function(e){var b=e.target.closest("[data-c]");if(!b)return;SC.cat=b.getAttribute("data-c");scOnFilt();};
+  var all=scCountBrands(), act=scActiveBrands(), allOn=!SC.brands||!SC.brands.length;
+  if(!all.length){ br.innerHTML='<div class="sc-brand-empty">นำเข้า SOH แล้วจะมีตัวกรองแบรนด์ที่นี่</div>'; br.onclick=null; return; }
+  br.innerHTML='<button type="button" data-b="__ALL__"'+(allOn?' class="on"':"")+'>ทั้งหมด</button>'+all.map(function(b){return '<button type="button" data-b="'+esc(b)+'"'+(!allOn&&act.indexOf(b)>=0?' class="on"':"")+">"+esc(b)+"</button>";}).join("");
+  br.onclick=function(e){
+    var b=e.target.closest("[data-b]"); if(!b) return;
+    var name=b.getAttribute("data-b");
+    if(name==="__ALL__"){ SC.brands=[]; scOnFilt(); return; }
+    var cur=SC.brands&&SC.brands.length?SC.brands.slice():[];
+    if(!cur.length){ SC.brands=[name]; scOnFilt(); return; }
+    var on=cur.indexOf(name)>=0, next=on?cur.filter(function(x){return x!==name;}):cur.concat([name]);
+    SC.brands=(!next.length||next.length===all.length)?[]:next;
+    scOnFilt();
+  };
+}
+function scOverSum(rows){
+  var pos=0,counted=0,done=0,total=rows.length;
+  rows.forEach(function(r){pos+=Number(r.pos)||0; counted+=Number(r.counted)||0; if(r.counted) done++;});
+  return {pos:pos,counted:counted,diff:counted-pos,done:done,total:total,pct:total?Math.round(100*done/total):0};
+}
+function scRenderOver(){
+  var el=$("sc-over"); if(!el||!SC.sess) return;
+  var soh=SC.sess.soh||[];
+  if(!soh.length){ el.innerHTML='<h3>ภาพรวมการนับ</h3><div class="sc-empty" style="padding-top:0">นำเข้า POS SOH ก่อน จึงจะเห็นภาพรวมตามแบรนด์และประเภทสินค้า</div>'; return; }
+  var rows=scReconcile(true);
+  var use=rows.filter(function(r){return r.pos!==0||r.counted!==0;});
+  var g=scOverSum(use);
+  function card(label,key,sum){
+    return '<button type="button" class="sc-over-card" data-k="'+esc(key)+'"><div class="k">'+esc(label)+'</div><div class="v">นับ '+sum.counted+' / POS '+sum.pos+'</div><div class="s">ส่วนต่าง '+(sum.diff>0?"+":"")+sum.diff+' · SKU '+sum.done+'/'+sum.total+' · '+sum.pct+'%</div></button>';
+  }
+  var types=[["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"]].map(function(t){
+    var part=use.filter(function(r){return scRowBucket(r)===t[0];});
+    return card(t[1],t[0],scOverSum(part));
+  }).join("");
+  var brands=scCountBrands().slice();
+  var seen={}; brands.forEach(function(b){seen[b]=1;});
+  use.forEach(function(r){ if(r.brand&&!seen[r.brand]){ seen[r.brand]=1; brands.push(r.brand);} });
+  var body=brands.map(function(b){
+    var part=use.filter(function(r){return r.brand===b;});
+    var s=scOverSum(part);
+    return '<tr data-b="'+esc(b)+'"><td>'+esc(b)+'</td><td class="num">'+s.pos+'</td><td class="num">'+s.counted+'</td><td class="num">'+(s.diff>0?"+":"")+s.diff+'</td><td class="num">'+s.done+'/'+s.total+'</td><td class="num">'+s.pct+'%</td></tr>';
+  }).join("");
+  el.innerHTML='<h3>ภาพรวมการนับ</h3><div class="sc-over-hero"><div class="pct">เสร็จแล้ว '+g.pct+'%</div><div class="nums">POS '+g.pos+' · นับแล้ว '+g.counted+' · ส่วนต่าง '+(g.diff>0?"+":"")+g.diff+'<br>SKU ที่นับแล้ว '+g.done+' / '+g.total+'</div></div><div class="sc-flab">ตามประเภทสินค้า · แตะเพื่อกรองหน้านับ</div><div class="sc-over-grid">'+types+'</div><div class="sc-flab">ตามแบรนด์ · แตะเพื่อกรองหน้านับ</div><div style="overflow:auto"><table class="sc-preview sc-over-br"><thead><tr><th>แบรนด์</th><th>POS</th><th>นับ</th><th>ส่วนต่าง</th><th>SKU</th><th>%</th></tr></thead><tbody>'+(body||'<tr><td colspan="6">ไม่มีแบรนด์</td></tr>')+'</tbody></table></div>';
+  el.onclick=function(e){
+    var card=e.target.closest("[data-k]");
+    var row=e.target.closest("tr[data-b]");
+    if(card){ SC.cat=card.getAttribute("data-k"); scWork("count"); return; }
+    if(row){ SC.brands=[row.getAttribute("data-b")]; scWork("count"); }
+  };
+}
 function scInit(){
   scLoadStore();
   if($("sc-loc")) $("sc-loc").value=SC.loc;
@@ -3078,23 +3178,28 @@ function scShow(v){
   show($("sc-home"),SC.view==="home");
   show($("sc-form"),SC.view==="form");
   show($("sc-work"),SC.view==="work");
-  if(SC.view==="home"){show($("scan"),false);scRefreshList($("sc-q")?$("sc-q").value.trim():"");}
-  else if(SC.view==="form"){show($("scan"),false);}
+  if(SC.view==="home"){scParkScan(false);show($("scan"),false);scRefreshList($("sc-q")?$("sc-q").value.trim():"");}
+  else if(SC.view==="form"){scParkScan(false);show($("scan"),false);}
   else {scWork(SC.work||"count");}
 }
 function scWork(w){
   SC.work=w||"count";
-  ["import","count","rec","log","exp"].forEach(function(k){
-    var pane=$(k==="count"?"sc-countp":k==="log"?"sc-logp":k==="rec"?"sc-rec":k==="exp"?"sc-exp":"sc-import");
+  ["over","import","count","rec","log","exp"].forEach(function(k){
+    var pane=$(k==="count"?"sc-countp":k==="log"?"sc-logp":k==="rec"?"sc-rec":k==="exp"?"sc-exp":k==="over"?"sc-over":"sc-import");
     if(pane) show(pane, SC.work===k);
   });
   [].forEach.call($("sc-sub").querySelectorAll("button[data-w]"),function(b){b.classList.toggle("on",b.getAttribute("data-w")===SC.work);});
   var needCam=SC.work==="count";
+  var showFilt=SC.work==="count"||SC.work==="rec";
+  if($("sc-filt")) show($("sc-filt"),showFilt);
+  scParkScan(needCam);
   show($("scan"),needCam);
   $("q").placeholder=needCam?"บาร์โค้ด / SKU / ชื่อสินค้า":$("q").placeholder;
   if(needCam) camWanted(); else pauseCam();
   scRenderHead();
-  if(SC.work==="count") scRenderCount();
+  if(showFilt) scRenderFilt();
+  if(SC.work==="over") scRenderOver();
+  else if(SC.work==="count") scRenderCount();
   else if(SC.work==="rec") scRenderRec();
   else if(SC.work==="log") scRenderLog();
   else if(SC.work==="import") scRenderImport();
@@ -3139,10 +3244,12 @@ function scCard(s){
   return '<div class="bx" data-no="'+esc(s.sessionNo)+'"><div class="bx-t">'+esc(s.sessionNo)+'</div><div class="bx-s">'+esc(s.counterName||s.counterCode||"")+'</div><div class="bx-m">'+esc(s.countDate||"")+' · '+esc(s.countedBy||"")+' · นับ '+(s.totalCounted||0)+' · SOH '+(s.sohRows||0)+'</div><div class="sc-actions" style="margin-top:8px"><button type="button" class="btn2 sc-open" style="flex:none;margin:0;padding:6px 12px">เปิด</button><button type="button" class="btn2 sc-del" style="flex:none;margin:0;padding:6px 12px">ลบ</button></div></div>';
 }
 function scRefreshList(q){
-  apiGet("sessions",{q:q||"",limit:80}).then(function(r){
+  var el=$("sc-list");
+  if(el&&!el.getAttribute("data-has")) el.innerHTML='<div class="sc-empty">กำลังโหลดรอบนับจากเซิร์ฟเวอร์…</div>';
+  apiGet({api:"sessions",q:q||"",limit:80}).then(function(r){
     SC.sessions=(r&&r.sessions)||[];
-    var el=$("sc-list");
     if(!el) return;
+    el.setAttribute("data-has","1");
     if(!SC.sessions.length){el.innerHTML='<div class="sc-empty">ยังไม่มีรอบนับ</div>';return;}
     el.innerHTML=SC.sessions.map(scCard).join("");
     el.onclick=function(e){
@@ -3165,11 +3272,11 @@ function scOpen(no){
   no=parseScScan(no)||String(no||"").trim();
   if(!no) return;
   setTab("count",true);
-  apiGet("session",{no:no}).then(function(r){
+  apiGet({api:"session",no:no}).then(function(r){
     if(!r||!r.ok){toast((r&&r.error)||"ไม่พบรอบนับ");scShow("home");return;}
     SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
     scMergeQueue();
-    scShow("work"); scWork(SC.sess.soh&&SC.sess.soh.length?"count":"import");
+    scShow("work"); scWork(SC.sess.soh&&SC.sess.soh.length?"over":"import");
     scFlush();
   }).catch(function(){toast("โหลดเซสชันไม่ได้");});
 }
@@ -3225,11 +3332,11 @@ function scFlush(){
 function scPull(){
   if(!SC.sess) return;
   var no=SC.sess.sessionNo;
-  apiGet("session",{no:no}).then(function(r){
+  apiGet({api:"session",no:no}).then(function(r){
     if(!r||!r.ok) return;
     SC.sess=r.session; SC.sess.soh=r.soh||[]; SC.sess.lines=r.lines||[];
     scMergeQueue();
-    if(SC.view==="work"){scRenderHead(); if(SC.work==="count") scRenderCount(); if(SC.work==="rec") scRenderRec(); if(SC.work==="log") scRenderLog();}
+    if(SC.view==="work"){scRenderHead(); if(SC.work==="count"||SC.work==="rec") scRenderFilt(); if(SC.work==="over") scRenderOver(); if(SC.work==="count") scRenderCount(); if(SC.work==="rec") scRenderRec(); if(SC.work==="log") scRenderLog();}
   }).catch(function(){});
 }
 
@@ -3421,7 +3528,7 @@ function scSaveImport(){
   SC.sess.soh=rows; SC.sess.brands=brands.join(", "); SC.sess.countBrands=brands.join(", "); SC.sess.sohRows=rows.length; SC.sess.sohQty=rows.reduce(function(n,x){return n+x.qty;},0);
   scPersist();
   toast("กำลังบันทึก "+rows.length+" รายการ…");
-  scFlush().then(function(){toast("นำเข้าแล้ว "+rows.length+" รายการ"); scWork("count");});
+  scFlush().then(function(){toast("นำเข้าแล้ว "+rows.length+" รายการ"); scWork("over");});
 }
 
 function scMasterGroup(sku){
@@ -3564,18 +3671,7 @@ function scRenderStage(){
 function scRenderCount(){
   if(!SC.sess) return;
   [].forEach.call($("sc-mode").querySelectorAll("button"),function(b){b.classList.toggle("on",b.getAttribute("data-m")===SC.mode);});
-  $("sc-cat").innerHTML=[["ALL","ทั้งหมด"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"]].map(function(x){return '<button type="button" data-c="'+x[0]+'"'+(SC.cat===x[0]?' class="on"':"")+">"+x[1]+"</button>";}).join("");
-  $("sc-cat").onclick=function(e){var b=e.target.closest("[data-c]");if(!b)return;SC.cat=b.getAttribute("data-c");scRenderCount();};
-  var all=scCountBrands();
-  var act=scActiveBrands();
-  $("sc-brandf").innerHTML=all.map(function(b){return '<button type="button" data-b="'+esc(b)+'"'+(act.indexOf(b)>=0?' class="on"':"")+">"+esc(b)+"</button>";}).join("");
-  $("sc-brandf").onclick=function(e){
-    var b=e.target.closest("[data-b]"); if(!b) return;
-    var name=b.getAttribute("data-b"), on=act.indexOf(name)>=0, next=on?act.filter(function(x){return x!==name;}):act.concat([name]);
-    if(!next.length) next=all.slice();
-    SC.brands=next.length===all.length?[]:next;
-    scRenderCount();
-  };
+  scRenderFilt();
   scRenderStage();
   var net=scNet(), soh=(SC.sess.soh||[]), rows=[];
   Object.keys(net).forEach(function(k){
@@ -3625,14 +3721,14 @@ function scVoidSku(sku){
   if(!confirm("ลบยอดนับ "+sku+" ("+n.qty+") — เก็บประวัติไว้")) return;
   scQueueLines([{eventId:uid(),kind:"void",refEventId:"",ts:scTime(),user:scBy(),location:n.location||SC.loc,mode:"key",scanned:n.sku||sku,sku:n.sku,barcode:n.barcode,desc:n.desc,qty:-n.qty,flag:n.flag||""}]);
 }
-function scReconcile(){
+function scReconcile(allRows){
   var soh=(SC.sess&&SC.sess.soh)||[], net=scNet(), seen={}, rows=[];
   function push(rec, n){
     var sku=rec.sku||(n&&n.sku)||"", barcode=rec.barcode||(n&&n.barcode)||"", desc=rec.desc||(n&&n.desc)||"", brand=rec.brand||"";
     var pos=Number(rec.qty)||0, counted=n?n.qty:0, diff=counted-pos;
     var st=(!rec.sku&&n&&!scFindSoh(n.sku,n.barcode))||(sku&&!soh.some(function(s){return String(s.sku).toUpperCase()===String(sku).toUpperCase();}))?"Not in POS":(counted===0?"Not counted":(diff===0?"Match":(diff<0?"Short":"Over")));
     var row={sku:sku,barcode:barcode,brand:brand,desc:desc,pos:pos,counted:counted,diff:diff,status:st,group:rec.group,groupOverride:rec.groupOverride,location:n?n.location:""};
-    if(!scPassFilters(row)) return;
+    if(!allRows&&!scPassFilters(row)) return;
     rows.push(row);
   }
   soh.forEach(function(r){
