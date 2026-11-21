@@ -8,6 +8,8 @@ import {
   searchCatalog,
   editDistance,
   filterRowsByType,
+  counterNamesDeduped,
+  stripPlaceListLabel,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -100,4 +102,19 @@ test("filterRowsByType", () => {
 
 test("editDistance", () => {
   assert.equal(editDistance("hacivat", "hacivt"), 1);
+});
+
+test("packing from datalist labels", () => {
+  var sample = [
+    { code: "ICON-ADP", name: "ICONSIAM - NICHE ADP" },
+    { code: "CC002-CLOM", name: "CENTRAL CHIDLOM - NICHE ADP" },
+    { code: "CC002-CLOM", name: "CENTRAL CHIDLOM - NISHANE" },
+  ];
+  assert.deepEqual(counterNamesDeduped(sample), [
+    "ICONSIAM - NICHE ADP",
+    "CENTRAL CHIDLOM - NICHE ADP",
+    "CENTRAL CHIDLOM - NISHANE",
+  ]);
+  assert.equal(stripPlaceListLabel("ICON-ADP · ICONSIAM - NICHE ADP"), "ICONSIAM - NICHE ADP");
+  assert.equal(stripPlaceListLabel("Pullback to Office"), "Pullback to Office");
 });

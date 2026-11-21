@@ -203,6 +203,32 @@ export function searchCatalog(catalog, text, opts) {
   return { hits: hits.slice(0, limit), query: q, qty: qty, allHits: hits };
 }
 
+export function counterPlaceName(c) {
+  if (!c) return "";
+  return String(c.name != null ? c.name : c[1] || "").trim();
+}
+
+export function counterNamesDeduped(counters) {
+  var seen = {};
+  var out = [];
+  (counters || []).forEach(function (c) {
+    var n = counterPlaceName(c);
+    if (!n) return;
+    var k = n.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push(n);
+  });
+  return out;
+}
+
+/** Strip legacy datalist values like "ICON-ADP · ICONSIAM - NICHE ADP" → place name only. */
+export function stripPlaceListLabel(s) {
+  s = String(s || "").trim();
+  var m = /^[A-Za-z0-9][A-Za-z0-9\-]{2,24}\s*·\s*(.+)$/.exec(s);
+  return m ? m[1].trim() : s;
+}
+
 export function filterRowsByType(rows, typeCat, bucketFn) {
   bucketFn = bucketFn || rowTypeBucket;
   if (!typeCat || typeCat === "ALL") return rows ? rows.slice() : [];
@@ -228,6 +254,9 @@ if (typeof window !== "undefined") {
     rowTypeBucket: rowTypeBucket,
     parseSearchQty: parseSearchQty,
     searchQueryOnly: searchQueryOnly,
+    counterPlaceName: counterPlaceName,
+    counterNamesDeduped: counterNamesDeduped,
+    stripPlaceListLabel: stripPlaceListLabel,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,

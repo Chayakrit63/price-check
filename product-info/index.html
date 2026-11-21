@@ -2067,9 +2067,30 @@ function fillDatalist(id, items){
 }
 function fillPlaceLists(){
   if($("sc-ctr-list")) fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
-  var counters=(pkCounters||[]).map(counterLabel);
-  fillDatalist("ship-list", SHIP_PRESETS.concat(counters).concat(shipList()));
-  fillDatalist("from-list", counters.concat(fromList()));
+  fillDatalist("ship-list", SHIP_PRESETS.slice());
+  var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):[];
+  if(!names.length){names=counterNamesDedupedFallback(pkCounters||[]);}
+  var fromHist=fromList().map(function(s){
+    if(window.CatalogCore&&CatalogCore.stripPlaceListLabel) return CatalogCore.stripPlaceListLabel(s);
+    return stripPlaceListLabelFallback(s);
+  });
+  fillDatalist("from-list", names.concat(fromHist));
+}
+function counterNamesDedupedFallback(counters){
+  var seen={},out=[];
+  (counters||[]).forEach(function(c){
+    var n=String((c&&c.name)||"").trim();
+    if(!n) return;
+    var k=n.toLowerCase();
+    if(seen[k]) return;
+    seen[k]=1;out.push(n);
+  });
+  return out;
+}
+function stripPlaceListLabelFallback(s){
+  s=String(s||"").trim();
+  var m=/^[A-Za-z0-9][A-Za-z0-9\-]{2,24}\s*·\s*(.+)$/.exec(s);
+  return m?m[1].trim():s;
 }
 function loadCounters(){
   apiGet({api:"counters"}).then(function(res){
