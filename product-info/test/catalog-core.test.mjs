@@ -4,6 +4,7 @@ import {
   itemTypeBucket,
   rowTypeBucket,
   parseSearchQty,
+  searchQueryOnly,
   searchCatalog,
   editDistance,
   filterRowsByType,
@@ -80,6 +81,7 @@ test("parseSearchQty", () => {
   assert.deepEqual(parseSearchQty("ext0029*6"), { query: "ext0029", qty: 6 });
   assert.deepEqual(parseSearchQty("ext0029 x6"), { query: "ext0029", qty: 6 });
   assert.deepEqual(parseSearchQty("foo"), { query: "foo", qty: 1 });
+  assert.equal(searchQueryOnly("3360374507206*3"), "3360374507206");
 });
 
 test("searchCatalog multi-word and fuzzy", () => {
