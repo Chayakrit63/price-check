@@ -162,6 +162,7 @@ body.mode-count .or,body.mode-count .foot{display:none}
 .pk-type-filt{margin:0 18px 8px;background:#fffdf9;border:1px solid #e3cfae;border-radius:14px;padding:8px 10px}
 .pk-type-filt.hidden{display:none!important}
 .pk-type-filt .sc-chips{margin-bottom:0;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.pk-type-filt .sc-chips button.on{background:#8b0f14;color:#fff;border-color:#8b0f14;font-weight:500}
 .sug-recent .sug-name{font-weight:500;color:#8b0f14}
 .sc-over-card{background:#fff;border:1px solid #e3cfae;border-radius:12px;padding:10px 8px;text-align:center;cursor:pointer}
 .sc-over-card .k{font:600 12px Prompt;color:#8b0f14}
@@ -1492,12 +1493,12 @@ function pkRenderTypeChips(counts){
   if(!pkPackBoxActive()) return;
   var defs=[["ALL","ทั้งหมด"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"],["OTH","OTH"]];
   counts=counts||{};
+  var active=PK.typeCat||"ALL";
   box.innerHTML=defs.map(function(d){
-    var c=d[0]===PK.typeCat?" on":"";
     var n=counts[d[0]];
     var suf=(n!=null&&n>0&&d[0]!=="ALL")?" ("+pkTypeChipLabel(n)+")":"";
     if(d[0]==="ALL"&&counts.ALL>0) suf=" ("+pkTypeChipLabel(counts.ALL)+")";
-    return '<button type="button" data-t="'+d[0]+'"'+c+">"+d[1]+suf+"</button>";
+    return '<button type="button" data-t="'+d[0]+'"'+(d[0]===active?' class="on"':"")+">"+d[1]+suf+"</button>";
   }).join("");
   box.onclick=function(e){
     var b=e.target.closest("[data-t]"); if(!b) return;
