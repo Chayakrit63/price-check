@@ -417,9 +417,9 @@ body.typing .tabbar{display:none}
   </div>
   <input id="file" type="file" accept="image/*" capture="environment" tabindex="-1" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
   <div id="file-reader" aria-hidden="true"></div>
-<div id="pk-type-wrap" class="pk-type-filt hidden">
+<div id="search-type-wrap" class="pk-type-filt hidden">
   <div class="sc-flab">ประเภท · Type</div>
-  <div class="sc-chips" id="pk-type-chips"></div>
+  <div class="sc-chips" id="search-type-chips"></div>
 </div>
 <div class="or">or type SKU / barcode / name</div>
   <div class="inwrap" id="inwrap">
@@ -988,6 +988,7 @@ function applyDecoded(text){
   var pk=parsePackScan(text);
   if(pk){openBoxNo(pk.boxNo, pk.boxSeq||0);return;}
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){pkScan(text);return;}
+  if(MODE==="info"){infoApplyScan(text);return;}
   var hits=lookup(text);
   showHits(hits, text);
   logScan(text, hits&&hits.length?hits.map(function(r){return r.sku;}).join(","):"");
@@ -1376,6 +1377,7 @@ function onScan(text){
 function showScan(){
   show($("out"),false);
   show($("scan"),true);
+  if(MODE==="info") searchRenderTypeChips();
   if(!camUserOn){showCamOffUi();return;}
   if(camOk) resumeCam();
   else showPhotoUi();
@@ -1395,6 +1397,7 @@ function showHits(hits, q){
   window.scrollTo(0,0);
 }
 function showResult(row, scanned, fromList){
+  if(MODE==="info") infoRememberRecent(row);
   show($("scan"),false);
   show($("out"),true);
   show($("multi"),false);
@@ -1475,48 +1478,62 @@ function catalogRowBucket(row){
   return scRowBucket(row);
 }
 function pkPackBoxActive(){return MODE==="pack"&&PKVIEW==="box"&&!!curBox();}
-function pkTypeFilterRows(rows){
-  if(!pkPackBoxActive()||!PK.typeCat||PK.typeCat==="ALL") return rows?rows.slice():[];
-  return (rows||[]).filter(function(r){return catalogRowBucket(r)===PK.typeCat;});
+function infoSearchActive(){return MODE==="info";}
+function searchTypeBarActive(){return pkPackBoxActive()||infoSearchActive();}
+function searchTypeGet(){
+  if(pkPackBoxActive()) return PK.typeCat||"ALL";
+  if(infoSearchActive()) return INFO.typeCat||"ALL";
+  return "ALL";
 }
-function pkTypeChipLabel(n){return n>99?"99+":String(n);}
-function pkSaveTypeCat(v){
-  PK.typeCat=v||"ALL";
-  try{localStorage.setItem(PKTYPEKEY,PK.typeCat);}catch(e){}
-  pkRenderTypeChips();
+function searchTypeSet(v){
+  v=v||"ALL";
+  if(pkPackBoxActive()){PK.typeCat=v;try{localStorage.setItem(PKTYPEKEY,v);}catch(e){}}
+  else if(infoSearchActive()){INFO.typeCat=v;try{localStorage.setItem(INFOTYPEKEY,v);}catch(e){}}
+  searchRenderTypeChips();
   if($("q")&&$("q").value.trim().length>=2) runSuggest();
 }
-function pkRenderTypeChips(counts){
-  var wrap=$("pk-type-wrap"), box=$("pk-type-chips");
+function searchTypeFilterRows(rows){
+  if(!searchTypeBarActive()) return rows?rows.slice():[];
+  var cat=searchTypeGet();
+  if(!cat||cat==="ALL") return rows?rows.slice():[];
+  return (rows||[]).filter(function(r){return catalogRowBucket(r)===cat;});
+}
+function searchTypeChipLabel(n){return n>99?"99+":String(n);}
+function searchRenderTypeChips(counts){
+  var wrap=$("search-type-wrap"), box=$("search-type-chips");
   if(!wrap||!box) return;
-  show(wrap,pkPackBoxActive());
-  if(!pkPackBoxActive()) return;
+  show(wrap,searchTypeBarActive());
+  if(!searchTypeBarActive()) return;
   var defs=[["ALL","ทั้งหมด"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"],["OTH","OTH"]];
   counts=counts||{};
-  var active=PK.typeCat||"ALL";
+  var active=searchTypeGet();
   box.innerHTML=defs.map(function(d){
     var n=counts[d[0]];
-    var suf=(n!=null&&n>0&&d[0]!=="ALL")?" ("+pkTypeChipLabel(n)+")":"";
-    if(d[0]==="ALL"&&counts.ALL>0) suf=" ("+pkTypeChipLabel(counts.ALL)+")";
+    var suf=(n!=null&&n>0&&d[0]!=="ALL")?" ("+searchTypeChipLabel(n)+")":"";
+    if(d[0]==="ALL"&&counts.ALL>0) suf=" ("+searchTypeChipLabel(counts.ALL)+")";
     return '<button type="button" data-t="'+d[0]+'"'+(d[0]===active?' class="on"':"")+">"+d[1]+suf+"</button>";
   }).join("");
   box.onclick=function(e){
     var b=e.target.closest("[data-t]"); if(!b) return;
-    pkSaveTypeCat(b.getAttribute("data-t"));
+    searchTypeSet(b.getAttribute("data-t"));
   };
 }
-function pkRememberRecent(row){
-  if(!row||!row.sku) return;
+function pkSaveTypeCat(v){searchTypeSet(v);}
+function pkRenderTypeChips(counts){searchRenderTypeChips(counts);}
+function rememberRecentSku(storageKey,row){
+  if(!row||!row.sku||!storageKey) return;
   var sku=String(row.sku).toUpperCase(), list=[];
-  try{list=JSON.parse(localStorage.getItem(PKRECENTKEY)||"[]")||[];}catch(e){}
+  try{list=JSON.parse(localStorage.getItem(storageKey)||"[]")||[];}catch(e){}
   list=list.filter(function(s){return String(s).toUpperCase()!==sku;});
   list.unshift(sku);
   if(list.length>10) list.length=10;
-  try{localStorage.setItem(PKRECENTKEY,JSON.stringify(list));}catch(e){}
+  try{localStorage.setItem(storageKey,JSON.stringify(list));}catch(e){}
 }
-function pkRecentRows(){
+function pkRememberRecent(row){rememberRecentSku(PKRECENTKEY,row);}
+function infoRememberRecent(row){rememberRecentSku(INFORECENTKEY,row);}
+function recentRowsFrom(storageKey){
   var list=[];
-  try{list=JSON.parse(localStorage.getItem(PKRECENTKEY)||"[]")||[];}catch(e){}
+  try{list=JSON.parse(localStorage.getItem(storageKey)||"[]")||[];}catch(e){}
   var out=[];
   list.forEach(function(sku){
     var hit=INDEX[String(sku).toUpperCase()];
@@ -1524,39 +1541,81 @@ function pkRecentRows(){
   });
   return out;
 }
-function pkShowRecentSuggest(){
-  if(!pkPackBoxActive()) return;
-  var rows=pkTypeFilterRows(pkRecentRows());
+function pkRecentRows(){return recentRowsFrom(PKRECENTKEY);}
+function infoRecentRows(){return recentRowsFrom(INFORECENTKEY);}
+function searchQueryText(raw){
+  if(window.CatalogCore&&CatalogCore.searchQueryOnly) return CatalogCore.searchQueryOnly(raw);
+  return parsePkSearchQty(raw).query;
+}
+function searchScanTypeBlocked(allHits,text,sub,onResolved){
+  var labels={STOCK:"Stock",TESTER:"Tester",GWPS:"GWPs",OTH:"OTH",ALL:"ทั้งหมด"};
+  var lab=labels[searchTypeGet()]||searchTypeGet();
+  toast("พบสินค้าแต่ไม่อยู่ในประเภท "+lab+" · Found but hidden by type filter","err");
+  var body=openSheet("ประเภทไม่ตรง · Type filter",String(text||"").trim()+" · "+sub);
+  allHits.forEach(function(row){
+    var b=catalogRowBucket(row);
+    body.appendChild(sugButton(row,"",function(){
+      closeSheet(false);
+      searchTypeSet(b);
+      onResolved(row,text);
+    }));
+  });
+}
+function pkScanTypeBlocked(allHits,text,qty){
+  searchScanTypeBlocked(allHits,text,"เลือกเปลี่ยนประเภทแล้วเพิ่ม",function(row,code){
+    pkAdd(row,code,qty);
+    pkAfter();
+  });
+}
+function infoScanTypeBlocked(allHits,text){
+  searchScanTypeBlocked(allHits,text,"เลือกเปลี่ยนประเภทแล้วเปิด",function(row,code){
+    hideSug();
+    showResult(row,code);
+    logScan(code,row.sku);
+    stopCam();
+  });
+}
+function showRecentSuggest(){
+  if(!searchTypeBarActive()) return;
+  var rows=searchTypeFilterRows(pkPackBoxActive()?pkRecentRows():infoRecentRows());
   if(!rows.length){hideSug();return;}
   SUGS=rows.map(function(row){return {row:row,rank:0};});
   sugIndex=0;
   var box=$("sug");
   box.innerHTML="";
-  var h=document.createElement("div");h.className="sug-empty sug-recent";h.textContent="ล่าสุดที่ใส่ในกล่อง · Recent";box.appendChild(h);
+  var h=document.createElement("div");
+  h.className="sug-empty sug-recent";
+  h.textContent=pkPackBoxActive()?"ล่าสุดที่ใส่ในกล่อง · Recent":"ล่าสุดที่เปิดดู · Recently viewed";
+  box.appendChild(h);
   rows.forEach(function(row,i){
-    var btn=sugButton(row,"",function(){pickSug(row,1);});
+    var btn=sugButton(row,"",function(){pickSug(row);});
     if(i===0) btn.classList.add("on");
     box.appendChild(btn);
   });
   show(box,true);
   $("q").setAttribute("aria-expanded","true");
   placeSug();
-  pkRenderTypeChips();
+  searchRenderTypeChips();
 }
-function pkScanTypeBlocked(allHits,text,qty){
-  var labels={STOCK:"Stock",TESTER:"Tester",GWPS:"GWPs",OTH:"OTH",ALL:"ทั้งหมด"};
-  var lab=labels[PK.typeCat]||PK.typeCat;
-  toast("พบสินค้าแต่ไม่อยู่ในประเภท "+lab+" · Found but hidden by type filter","err");
-  var body=openSheet("ประเภทไม่ตรง · Type filter",String(text||"").trim()+" · เลือกเปลี่ยนประเภทแล้วเพิ่ม");
-  allHits.forEach(function(row){
-    var b=catalogRowBucket(row);
-    body.appendChild(sugButton(row,"",function(){
-      closeSheet(false);
-      pkSaveTypeCat(b);
-      pkAdd(row,text,qty);
-      pkAfter();
-    }));
-  });
+function pkShowRecentSuggest(){showRecentSuggest();}
+function infoResolveHits(code){
+  var allHits=lookup(code);
+  if(!allHits||!allHits.length){
+    var s=suggest(code);
+    if(s.length) allHits=s.map(function(x){return x.row;});
+  }
+  if(!allHits||!allHits.length) return null;
+  var hits=searchTypeFilterRows(allHits);
+  if(!hits.length) return {blocked:allHits,code:code};
+  return {hits:hits,code:code};
+}
+function infoApplyScan(text){
+  var code=searchQueryText(text);
+  var res=infoResolveHits(code);
+  if(!res){showNotFound(code);logScan(code,"");return;}
+  if(res.blocked){infoScanTypeBlocked(res.blocked,res.code);return;}
+  showHits(res.hits,res.code);
+  logScan(res.code,res.hits.map(function(r){return r.sku;}).join(","));
 }
 function sugButton(row,q,onPick){
   var btn=document.createElement("button");
@@ -1642,27 +1701,29 @@ function pickSug(row,qtyOverride){
   hideSug();
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){$("q").value="";$("q").blur();pkAdd(row,pq.query||raw||row.sku,qty);pkAfter();return;}
   LASTHITS=null;
-  var qScan=pq.query||raw||row.sku;
+  var qScan=searchQueryText(raw)||row.sku;
+  $("q").value="";
   showResult(row, qScan);
   logScan(qScan, row.sku);
   stopCam();
 }
 function runSuggest(){
   var q=$("q").value.trim();
-  if(q.length<2){if(pkPackBoxActive()&&document.activeElement===$("q")) pkShowRecentSuggest(); else hideSug(); pkRenderTypeChips(); return;}
-  var parsed=parsePkSearchQty(q);
-  var all=suggest(parsed.query);
+  if(q.length<2){if(searchTypeBarActive()&&document.activeElement===$("q")) showRecentSuggest(); else hideSug(); searchRenderTypeChips(); return;}
+  var searchQ=searchQueryText(q);
+  var all=suggest(searchQ);
   var counts={};
-  if(pkPackBoxActive()&&window.CatalogCore&&CatalogCore.countByType){
+  if(searchTypeBarActive()&&window.CatalogCore&&CatalogCore.countByType){
     var allRows=all.map(function(h){return h.row;});
     counts=CatalogCore.countByType(allRows,catalogRowBucket);
-    var filt=pkTypeFilterRows(allRows);
+    var filt=searchTypeFilterRows(allRows);
     counts.ALL=filt.length;
-    if(PK.typeCat&&PK.typeCat!=="ALL") counts[PK.typeCat]=filt.length;
+    var cat=searchTypeGet();
+    if(cat&&cat!=="ALL") counts[cat]=filt.length;
   }
   SUGS=all;
-  if(pkPackBoxActive()){
-  var filtered=pkTypeFilterRows(all.map(function(h){return h.row;}));
+  if(searchTypeBarActive()){
+    var filtered=searchTypeFilterRows(all.map(function(h){return h.row;}));
     var seen={}, filtHits=[];
     filtered.forEach(function(row){
       var k=String(row.sku).toUpperCase();
@@ -1674,8 +1735,8 @@ function runSuggest(){
     if(!SUGS.length&&all.length) counts={};
   }
   sugIndex=SUGS.length?0:-1;
-  renderSug(parsed.query);
-  if(pkPackBoxActive()) pkRenderTypeChips(SUGS.length||all.length?counts:null);
+  renderSug(searchQ);
+  if(searchTypeBarActive()) searchRenderTypeChips(SUGS.length||all.length?counts:null);
 }
 function onQueryInput(){
   if(sugTimer) clearTimeout(sugTimer);
@@ -1688,6 +1749,19 @@ function searchManual(){
   if(pksc){hideSug();$("q").value="";$("q").blur();openBoxNo(pksc.boxNo, pksc.boxSeq||0);return;}
   if(MODE==="count"&&SC.view==="work"&&scCur()){hideSug();$("q").value="";$("q").blur();scScan(q,true);return;}
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){hideSug();$("q").value="";$("q").blur();pkScan(q,true);return;}
+  if(MODE==="info"){
+    hideSug();
+    $("q").value="";$("q").blur();
+    var code=searchQueryText(q);
+    var res=infoResolveHits(code);
+    if(!res){showNotFound(code);logScan(code,"");}
+    else if(res.blocked) infoScanTypeBlocked(res.blocked,res.code);
+    else if(res.hits.length===1) showResult(res.hits[0],code);
+    else showHits(res.hits,code);
+    if(res&&!res.blocked) logScan(code,res.hits?res.hits.map(function(r){return r.sku;}).join(","):"");
+    stopCam();
+    return;
+  }
   var hits=lookup(q);
   if(!hits&&SUGS.length) hits=[SUGS[0].row];
   if(!hits){
@@ -1763,7 +1837,7 @@ $("q").addEventListener("input",onQueryInput);
 $("q").addEventListener("focus",function(){
   setTyping(true);
   if($("q").value.trim().length>=2) runSuggest();
-  else if(pkPackBoxActive()) pkShowRecentSuggest();
+  else if(searchTypeBarActive()) showRecentSuggest();
   setTimeout(function(){
     try{$("inwrap").scrollIntoView({block:"start",behavior:"smooth"});}catch(e){}
     placeSug();
@@ -1825,7 +1899,8 @@ document.addEventListener("visibilitychange",function(){
 });
 /* ===================== Packing ===================== */
 var MODE="info", PKVIEW="home";
-var PKKEY="productInfo.pack.v1", PKNAME="productInfo.pack.name", PKSHIP="productInfo.pack.shipTos", PKFROM="productInfo.pack.from", PKFROMS="productInfo.pack.froms", PKLIST="productInfo.pack.list", TABKEY="productInfo.tab", PKTYPEKEY="productInfo.pack.typeCat", PKRECENTKEY="productInfo.pack.recent";
+var PKKEY="productInfo.pack.v1", PKNAME="productInfo.pack.name", PKSHIP="productInfo.pack.shipTos", PKFROM="productInfo.pack.from", PKFROMS="productInfo.pack.froms", PKLIST="productInfo.pack.list", TABKEY="productInfo.tab", PKTYPEKEY="productInfo.pack.typeCat", PKRECENTKEY="productInfo.pack.recent", INFOTYPEKEY="productInfo.info.typeCat", INFORECENTKEY="productInfo.info.recent";
+var INFO={typeCat:"ALL"};
 var PK={drafts:{},cur:""};
 var pkResumeAt=0, pkTouched="", pkSheetOpen=false, pkViewBox=null, pkLabelBox=null, pkBoxes=[], pkServerShip=[], pkFormEdit=false, pkSaving=false, pkListQ="", pkSel={}, pkCounters=[];
 var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
@@ -1850,6 +1925,8 @@ function pkLoad(){
   }catch(e){}
   PK.typeCat="ALL";
   try{var tc=localStorage.getItem(PKTYPEKEY);if(tc) PK.typeCat=tc;}catch(e){}
+  INFO.typeCat="ALL";
+  try{var ic=localStorage.getItem(INFOTYPEKEY);if(ic) INFO.typeCat=ic;}catch(e){}
   Object.keys(PK.drafts).forEach(function(k){var b=PK.drafts[k];if(!b||!b.lines){delete PK.drafts[k];return;}b.reserving=false;normalizeDoc(b);});
   if(PK.cur&&!PK.drafts[PK.cur]) PK.cur="";
   try{pkBoxes=JSON.parse(localStorage.getItem(PKLIST)||"[]")||[];}catch(e){pkBoxes=[];}
@@ -2016,8 +2093,10 @@ function setTab(t,noShow){
     pkHideAll();
     $("q").placeholder="บาร์โค้ด / SKU / ชื่อสินค้า";
     show($("out"),false); show($("scan"),true);
+    searchRenderTypeChips();
     camWanted();
   }else if(MODE==="count"){
+    show($("search-type-wrap"),false);
     show($("out"),false);
     if(!noShow) scShow(scCur()?"work":"home");
   }else if(!noShow){
@@ -2037,13 +2116,13 @@ function pkShow(v){
   PKVIEW=v;
   pkHideAll();
   show($("out"),false);
-  if(v!=="box"){show($("pk-type-wrap"),false);}
+  if(v!=="box"){show($("search-type-wrap"),false);}
   if(v==="box"){
     if(!curBox()){pkShow("home");return;}
     show($("pk-head"),true); show($("scan"),true); show($("pk-body"),true);
     $("q").value="";
     $("q").placeholder="สแกน / พิมพ์ SKU, บาร์โค้ด, ชื่อ → ใส่กล่อง (*6 หรือ x6 = จำนวน)";
-    pkRenderTypeChips();
+    searchRenderTypeChips();
     pkRenderBox();
     camWanted();
   }else{
@@ -2428,7 +2507,7 @@ function pkScan(text,typed){
   var pq=parsePkSearchQty(text);
   var code=pq.query, qty=pq.qty;
   var allHits=lookup(code);
-  var hits=pkTypeFilterRows(allHits);
+  var hits=searchTypeFilterRows(allHits);
   if(!hits.length&&allHits&&allHits.length){pkScanTypeBlocked(allHits,code,qty);pkAfter();return;}
   if(hits&&hits.length===1){pkAdd(hits[0],code,qty);pkAfter();return;}
   if(hits&&hits.length>1){
@@ -2441,7 +2520,7 @@ function pkScan(text,typed){
   if(nl){nl.qty=(Number(nl.qty)||0)+qty;b.dirty=true;pkTouched=nl.k;pkPersist();pkRenderBox();toast("+"+qty+"  NOT IN MASTER · "+nl.desc+"  = "+nl.qty,"ok");pkAfter();return;}
   if(typed){
     var s=suggest(code);
-    var srows=pkTypeFilterRows(s.map(function(x){return x.row;}));
+    var srows=searchTypeFilterRows(s.map(function(x){return x.row;}));
     if(!srows.length&&s.length){pkScanTypeBlocked(s.map(function(x){return x.row;}),code,qty);return;}
     if(srows.length){pkPick(srows,code,"ไม่พบรหัสตรงกัน · เลือกจากรายการ หรือเพิ่มเป็น NOT IN MASTER",true,qty);return;}
   }

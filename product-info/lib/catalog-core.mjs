@@ -27,6 +27,11 @@ export function rowTypeBucket(row) {
   );
 }
 
+/** Query text only (strips *qty / xqty); qty is ignored on Info tab in the app. */
+export function searchQueryOnly(text) {
+  return parseSearchQty(text).query;
+}
+
 export function parseSearchQty(text) {
   var raw = String(text || "").trim();
   var qty = 1;
@@ -222,6 +227,7 @@ if (typeof window !== "undefined") {
     itemTypeBucket: itemTypeBucket,
     rowTypeBucket: rowTypeBucket,
     parseSearchQty: parseSearchQty,
+    searchQueryOnly: searchQueryOnly,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,
