@@ -1,0 +1,8 @@
+{
+  "name": "product-info",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.mjs"
+  }
+}
