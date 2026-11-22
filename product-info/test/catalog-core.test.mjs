@@ -37,12 +37,17 @@ import {
   packingSohSummary,
   filterSohLeftover,
   packingCounterCheck,
+  packingCounterCheckStatusLabel,
+  packingCounterCheckShortName,
+  packingCounterCheckExportStamp,
+  buildCounterCheckExcelData,
 } from "../lib/catalog-core.mjs";
 
 test("CatalogCore VERSION is a non-empty release id", () => {
   assert.equal(typeof VERSION, "string");
   assert.ok(VERSION.length >= 4);
   assert.equal(typeof packingCounterCheck, "function");
+  assert.equal(typeof buildCounterCheckExcelData, "function");
 });
 
 const SAMPLE_ROWS = [
@@ -441,4 +446,88 @@ test("packingCounterCheck live POPUP shape (done+leftover+over = 110)", () => {
   ]);
   assert.equal(replaced.totals.overSku, 0);
   assert.equal(replaced.totals.doneSku, 76);
+});
+
+test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
+  assert.equal(packingCounterCheckStatusLabel("leftover"), "ยังไม่แพ็ค");
+  assert.equal(packingCounterCheckStatusLabel("over"), "เกิน");
+  assert.equal(packingCounterCheckStatusLabel("missing"), "ไม่มีใน POS");
+  assert.equal(packingCounterCheckStatusLabel("done"), "ครบ");
+  assert.equal(
+    packingCounterCheckShortName(
+      "FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"
+    ),
+    "FM_x_GD_POPUP"
+  );
+  assert.match(packingCounterCheckExportStamp(new Date("2026-11-22T12:34:00+07:00")), /^\d{8}-\d{4}$/);
+
+  var soh = sohMapFromRows([
+    { sku: "00LEAD", qty: 2, desc: "Lead zero SKU", barcode: "001234" },
+    { sku: "OVER1", qty: 1, desc: "Over one", barcode: "9" },
+  ]);
+  var bundles = [
+    {
+      boxNo: "PK-261122-007",
+      lines: [
+        { sku: "00LEAD", qty: 1, barcode: "001234", desc: "Lead zero SKU", brand: "DIOR", boxSeq: 1 },
+        { sku: "OVER1", qty: 2, barcode: "9", desc: "Over one", brand: "DIOR" },
+      ],
+    },
+  ];
+  var check = packingCounterCheck(soh, bundles);
+  var data = buildCounterCheckExcelData({
+    counter: "FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026",
+    asOf: "22/11/2026 19:04",
+    check: check,
+    includedOpen: false,
+    bundles: bundles,
+    stamp: "20261122-1904",
+    includeStatusSheets: true,
+  });
+  assert.ok(data);
+  assert.equal(data.fileName, "CounterCheck_FM_x_GD_POPUP_20261122-1904.xlsx");
+  assert.equal(data.sheets[0].name, "Summary");
+  assert.equal(data.sheets[1].name, "All SKUs");
+  assert.equal(data.sheets[2].name, "By PK");
+  var summary = Object.fromEntries(data.sheets[0].aoa.slice(1));
+  assert.equal(summary.Counter, "FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026");
+  assert.equal(summary["SOH as-of"], "22/11/2026 19:04");
+  assert.equal(summary["PK count"], 1);
+  assert.equal(summary["Packed pcs"], 3);
+  assert.equal(summary["Over SKU"], 1);
+  assert.equal(summary["Leftover SKU"], 1);
+  assert.equal(summary["Included open draft"], "No");
+
+  var allHeader = data.sheets[1].aoa[0];
+  assert.deepEqual(allHeader.slice(0, 4), ["Status", "Brand", "SKU", "Barcode"]);
+  assert.ok(data.sheets[1].textCols.includes(2));
+  assert.ok(data.sheets[1].textCols.includes(3));
+  assert.equal(data.sheets[1].freeze, true);
+  assert.equal(data.sheets[1].autofilter, true);
+
+  var allBody = data.sheets[1].aoa.slice(1);
+  var lead = allBody.find((r) => r[2] === "00LEAD");
+  assert.ok(lead);
+  assert.equal(lead[0], "ยังไม่แพ็ค");
+  assert.equal(lead[3], "001234");
+  assert.equal(typeof lead[2], "string");
+  assert.equal(lead[5], 2);
+  assert.equal(lead[6], 1);
+  assert.equal(lead[7], 1);
+
+  var over = allBody.find((r) => r[2] === "OVER1");
+  assert.equal(over[0], "เกิน");
+  assert.equal(over[8], 1);
+  assert.match(String(over[9]), /PK-261122-007/);
+
+  var byPk = data.sheets[2].aoa;
+  assert.equal(byPk[0][0], "PK no");
+  assert.equal(byPk.length, 3); // header + 2 lines
+  assert.equal(byPk[1][0], "PK-261122-007");
+  assert.equal(byPk[1][2], "00LEAD");
+  assert.equal(byPk[1][6], 1);
+
+  var statusNames = data.sheets.slice(3).map((s) => s.name);
+  assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ"]);
+  assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
 });
