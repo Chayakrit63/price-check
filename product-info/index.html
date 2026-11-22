@@ -749,9 +749,9 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION on every release so GitHub Pages clients drop stale modules -->
-<script type="module" src="lib/catalog-core.mjs?v=20261122d"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261122e"></script>
 <script>
-var APP_VER="20261122d";
+var APP_VER="20261122e";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -2763,6 +2763,97 @@ function packingCounterCheckFn(sohMap, bundles){
   if(window.CatalogCore&&CatalogCore.packingCounterCheck) return CatalogCore.packingCounterCheck(sohMap, bundles);
   return null;
 }
+function buildCounterCheckExcelDataFn(opts){
+  if(window.CatalogCore&&CatalogCore.buildCounterCheckExcelData) return CatalogCore.buildCounterCheckExcelData(opts);
+  return null;
+}
+/** Load SheetJS with style support for xlsx write (falls back to plain xlsx used by SOH import). */
+function pkLoadXlsxForWrite(){
+  return new Promise(function(res,rej){
+    if(typeof XLSX!=="undefined"&&XLSX.utils&&typeof XLSX.write==="function"){
+      // Prefer style-capable build when exporting; reload style fork if plain CE already present without write styles
+      if(window.__xlsxWriteOk){res(XLSX);return;}
+    }
+    var s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js";
+    s.onload=function(){window.__xlsxWriteOk=true;res(XLSX);};
+    s.onerror=function(){
+      scLoadXlsx().then(function(){window.__xlsxWriteOk=true;res(XLSX);}).catch(rej);
+    };
+    document.head.appendChild(s);
+  });
+}
+function pkDownloadBlob(blob, name){
+  var fileName=name||"download.bin";
+  var file=null;
+  try{file=new File([blob], fileName, {type:blob.type||"application/octet-stream"});}catch(e){}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    navigator.share({files:[file], title:fileName}).catch(function(){pkAnchorDownload(blob, fileName);});
+    return;
+  }
+  pkAnchorDownload(blob, fileName);
+}
+function pkAnchorDownload(blob, fileName){
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url; a.download=fileName; a.rel="noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){try{URL.revokeObjectURL(url);}catch(e){}}, 2500);
+}
+function pkApplySheetExtras(ws, sheet){
+  if(!ws||!sheet) return;
+  var aoa=sheet.aoa||[];
+  var rows=aoa.length, cols=(aoa[0]&&aoa[0].length)||0;
+  if(sheet.cols&&sheet.cols.length){
+    ws["!cols"]=sheet.cols.map(function(w){return {wch:w};});
+  }
+  if(sheet.freeze&&rows>0){
+    ws["!freeze"]={xSplit:0,ySplit:1,topLeftCell:"A2",activePane:"bottomLeft",state:"frozen"};
+    ws["!views"]=[{state:"frozen",ySplit:1,topLeftCell:"A2",activeCell:"A2"}];
+  }
+  if(sheet.autofilter&&rows>1&&cols>0){
+    ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows-1,c:cols-1}})};
+  }
+  // Header bold
+  if(rows>0){
+    for(var c=0;c<cols;c++){
+      var addr=XLSX.utils.encode_cell({r:0,c:c});
+      if(!ws[addr]) continue;
+      ws[addr].s=Object.assign({}, ws[addr].s||{}, {
+        font:{bold:true},
+        alignment:{vertical:"center", wrapText:true}
+      });
+    }
+  }
+  // Force SKU/Barcode (etc.) as text — keep leading zeros
+  (sheet.textCols||[]).forEach(function(ci){
+    for(var r=1;r<rows;r++){
+      var a=XLSX.utils.encode_cell({r:r,c:ci});
+      if(!ws[a]) continue;
+      ws[a].t="s";
+      ws[a].v=String(ws[a].v==null?"":ws[a].v);
+      ws[a].z="@";
+    }
+  });
+}
+function pkExportCounterCheckXlsx(opts){
+  var data=buildCounterCheckExcelDataFn(opts);
+  if(!data) return Promise.reject(new Error("สร้างข้อมูล Excel ไม่ได้"));
+  return pkLoadXlsxForWrite().then(function(){
+    var wb=XLSX.utils.book_new();
+    data.sheets.forEach(function(sheet){
+      var ws=XLSX.utils.aoa_to_sheet(sheet.aoa||[]);
+      pkApplySheetExtras(ws, sheet);
+      // Sheet name max 31 chars
+      var name=String(sheet.name||"Sheet").slice(0,31);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    var out=XLSX.write(wb,{bookType:"xlsx",type:"array",cellStyles:true});
+    var blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    pkDownloadBlob(blob, data.fileName);
+    return data;
+  });
+}
 function pkExportRowsToLines(res){
   var cols=res.cols||CSV_COLS, idx={};
   cols.forEach(function(c,i){idx[String(c)]=i;});
@@ -2850,6 +2941,7 @@ function pkOpenCounterCheck(seedCounter){
     asOf:"",
     check:null,
     includedOpen:false,
+    bundles:[],
     showPks:{}
   };
   var body=openSheet("ตรวจภาพรวม counter · Counter check", seed||"เลือกเคาน์เตอร์");
@@ -2870,7 +2962,8 @@ function pkOpenCounterCheck(seedCounter){
     html+='<datalist id="ctr-check-list"></datalist>';
     html+='<div class="pk-act" style="margin:0 0 10px"><button type="button" class="btn" id="ctr-check-run" style="margin:0">ตรวจ · Check</button>';
     html+='<button type="button" class="btn2" id="ctr-check-refresh" style="margin:0;width:auto" title="Refresh">⟳</button>';
-    html+='<button type="button" class="btn2" id="ctr-check-copy" style="margin:0;width:auto" '+(state.check?"":"disabled")+'>Copy</button></div>';
+    html+='<button type="button" class="btn2" id="ctr-check-copy" style="margin:0;width:auto" '+(state.check?"":"disabled")+'>Copy</button>';
+    html+='<button type="button" class="btn2" id="ctr-check-xlsx" style="margin:0;width:auto" '+(state.check?"":"disabled")+'>⬇ Excel</button></div>';
     html+='<div id="ctr-check-body"></div>';
     body.innerHTML=html;
     fillDatalist("ctr-check-list", choices);
@@ -2882,6 +2975,33 @@ function pkOpenCounterCheck(seedCounter){
       if(navigator.clipboard&&navigator.clipboard.writeText){
         navigator.clipboard.writeText(text).then(function(){toast("คัดลอกแล้ว","ok");}).catch(function(){toast(text,"ok");});
       }else toast(text,"ok");
+    };
+    $("ctr-check-xlsx").onclick=function(){
+      if(!state.check) return;
+      var btn=$("ctr-check-xlsx");
+      if(btn) btn.disabled=true;
+      toast("กำลังสร้าง Excel…");
+      var enriched=Object.assign({}, state.check, {
+        rows:(state.check.rows||[]).map(function(r){
+          return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});
+        }),
+        leftover:(state.check.leftover||[]).map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});}),
+        over:(state.check.over||[]).map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});}),
+        missing:(state.check.missing||[]).map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});}),
+        done:(state.check.done||[]).map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});})
+      });
+      pkExportCounterCheckXlsx({
+        counter:state.counter,
+        asOf:state.asOf,
+        check:enriched,
+        includedOpen:state.includedOpen,
+        bundles:state.bundles||[],
+        includeStatusSheets:true
+      }).then(function(data){
+        toast("บันทึก "+(data&&data.fileName||"Excel")+" แล้ว","ok");
+      }).catch(function(err){
+        toast(String((err&&err.message)||err||"Export ไม่สำเร็จ"),"err");
+      }).then(function(){ if(btn) btn.disabled=!state.check; });
     };
     $("ctr-check-ctr").onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();state.counter=this.value.trim();run(false);}};
   }
@@ -2974,6 +3094,7 @@ function pkOpenCounterCheck(seedCounter){
       }
     };
     var copyBtn=$("ctr-check-copy"); if(copyBtn) copyBtn.disabled=!state.check;
+    var xlsxBtn=$("ctr-check-xlsx"); if(xlsxBtn) xlsxBtn.disabled=!state.check;
   }
   function fetchSohFresh(counter){
     return apiGet({api:"possoh",counter:counter}).then(function(res){
@@ -3040,6 +3161,7 @@ function pkOpenCounterCheck(seedCounter){
         });
         check.totals.pkCount=Object.keys(pkNos).length;
         state.check=check;
+        state.bundles=merged.bundles||[];
         state.loading=false;
         state.tab="leftover";
         paintResult();
@@ -3047,6 +3169,7 @@ function pkOpenCounterCheck(seedCounter){
     }).catch(function(err){
       state.loading=false;
       state.check=null;
+      state.bundles=[];
       if(pkCatalogCoreStale()){ state.err="STALE"; paintResult(); return; }
       var msg=String((err&&err.message)||err||"โหลดไม่สำเร็จ");
       if(/timeout|Failed to fetch|NetworkError|jsonp|offline|http /i.test(msg))

@@ -2,7 +2,7 @@
  * Shared catalog classifier + search (Node tests + browser via window.CatalogCore).
  * Bump VERSION in lockstep with APP_VER in index.html (cache-bust query on the module URL).
  */
-export var VERSION = "20261122d";
+export var VERSION = "20261122e";
 
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
@@ -907,6 +907,240 @@ export function filterSohLeftover(rows, query, brand) {
   });
 }
 
+export function packingCounterCheckStatusLabel(status) {
+  if (status === "leftover") return "ยังไม่แพ็ค";
+  if (status === "over") return "เกิน";
+  if (status === "missing") return "ไม่มีใน POS";
+  if (status === "done") return "ครบ";
+  return String(status || "");
+}
+
+/** Short safe token for CounterCheck_*.xlsx filenames. */
+export function packingCounterCheckShortName(counter) {
+  var s = String(counter || "").trim();
+  if (!s) return "Counter";
+  var cut = s.split(/\s+at\s+/i)[0].trim() || s;
+  var out = cut
+    .replace(/[^\w\u0E00-\u0E7F]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+  return (out || "Counter").slice(0, 48);
+}
+
+/**
+ * Format yyyymmdd-hhmm in a fixed timezone (default Asia/Bangkok).
+ * @param {Date|string|number} [date]
+ * @param {string} [timeZone]
+ */
+export function packingCounterCheckExportStamp(date, timeZone) {
+  var d = date instanceof Date ? date : new Date(date == null ? Date.now() : date);
+  if (isNaN(d.getTime())) d = new Date();
+  var tz = timeZone || "Asia/Bangkok";
+  var fmt;
+  try {
+    fmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch (e) {
+    var pad = function (n) {
+      return n < 10 ? "0" + n : String(n);
+    };
+    return (
+      d.getFullYear() +
+      pad(d.getMonth() + 1) +
+      pad(d.getDate()) +
+      "-" +
+      pad(d.getHours()) +
+      pad(d.getMinutes())
+    );
+  }
+  var parts = {};
+  fmt.formatToParts(d).forEach(function (p) {
+    if (p.type !== "literal") parts[p.type] = p.value;
+  });
+  // en-GB hourCycle can yield "24" for midnight — normalize
+  var hour = parts.hour === "24" ? "00" : parts.hour;
+  return parts.year + parts.month + parts.day + "-" + hour + parts.minute;
+}
+
+var CTR_CHECK_ALL_HEADERS = [
+  "Status",
+  "Brand",
+  "SKU",
+  "Barcode",
+  "Description",
+  "POS SOH",
+  "Packed",
+  "Left",
+  "Over",
+  "PK nos",
+];
+
+/**
+ * Pure workbook payload for Counter check Excel export (no SheetJS).
+ * Sheets: Summary, All SKUs, By PK (+ optional per-status sheets).
+ *
+ * @param {{
+ *   counter: string,
+ *   asOf?: string,
+ *   check: object,
+ *   includedOpen?: boolean,
+ *   bundles?: Array<{boxNo?:string, lines?:Array}>,
+ *   exportedAt?: Date|string|number,
+ *   stamp?: string,
+ *   includeStatusSheets?: boolean,
+ * }} opts
+ */
+export function buildCounterCheckExcelData(opts) {
+  opts = opts || {};
+  var check = opts.check;
+  if (!check || !check.totals) return null;
+  var counter = String(opts.counter || "").trim();
+  var asOf = String(opts.asOf || "").trim();
+  var includedOpen = !!opts.includedOpen;
+  var bundles = opts.bundles || [];
+  var stamp = opts.stamp || packingCounterCheckExportStamp(opts.exportedAt);
+  var short = packingCounterCheckShortName(counter);
+  var fileName = "CounterCheck_" + short + "_" + stamp + ".xlsx";
+  var t = check.totals;
+
+  var pkSet = {};
+  bundles.forEach(function (b) {
+    var no = String((b && b.boxNo) || "").trim();
+    if (no && no !== "__open__") pkSet[no] = 1;
+  });
+  (check.rows || []).forEach(function (r) {
+    (r.boxNos || []).forEach(function (n) {
+      if (n && n !== "__open__" && n !== "(เปิดอยู่)") pkSet[n] = 1;
+    });
+  });
+  var pkNos = Object.keys(pkSet).sort();
+  if (includedOpen && !pkNos.some(function (n) {
+    return n.indexOf("(เปิด") === 0;
+  })) {
+    // open draft may use real boxNo already in list; note separately in summary
+  }
+
+  var summaryAoa = [
+    ["Field", "Value"],
+    ["Counter", counter],
+    ["SOH as-of", asOf || "—"],
+    ["Export time", stamp],
+    ["PK count", t.pkCount],
+    ["PK numbers", pkNos.join(", ")],
+    ["Included open draft", includedOpen ? "Yes" : "No"],
+    ["SOH SKU", t.sohSkuCount],
+    ["SOH pcs", t.sohPcs],
+    ["Packed pcs", t.packedPcs],
+    ["Done SKU", t.doneSku],
+    ["Leftover SKU", t.leftoverSku],
+    ["Leftover pcs", t.leftoverPcs],
+    ["Over SKU", t.overSku],
+    ["Over pcs", t.overPcs],
+    ["Not-in-POS SKU", t.missingSku],
+    ["Not-in-POS pcs", t.missingPcs || 0],
+  ];
+
+  function skuRow(r) {
+    return [
+      packingCounterCheckStatusLabel(r.status),
+      String(r.brand || ""),
+      String(r.sku || ""),
+      String(r.barcode || ""),
+      String(r.desc || ""),
+      Number(r.soh) || 0,
+      Number(r.packed) || 0,
+      Number(r.left) || 0,
+      Number(r.over) || 0,
+      (r.boxNos || []).join(", "),
+    ];
+  }
+
+  var allRows = (check.rows || []).map(skuRow);
+  var allAoa = [CTR_CHECK_ALL_HEADERS.slice()].concat(allRows);
+
+  var byPkAoa = [["PK no", "Box", "SKU", "Barcode", "Description", "Brand", "Qty"]];
+  bundles.forEach(function (b) {
+    var no = String((b && b.boxNo) || "").trim() || "(เปิดอยู่)";
+    if (no === "__open__") no = "(เปิดอยู่)";
+    (b.lines || []).forEach(function (l) {
+      var qty = Number(l.qty) || 0;
+      if (qty <= 0) return;
+      var box =
+        Math.round(Number(l.boxSeq != null ? l.boxSeq : l.box) || 1) || 1;
+      byPkAoa.push([
+        no,
+        box,
+        String(l.sku || "").trim().toUpperCase(),
+        String(l.barcode || l.ean || ""),
+        String(l.desc || ""),
+        String(l.brand || ""),
+        qty,
+      ]);
+    });
+  });
+
+  var sheets = [
+    {
+      name: "Summary",
+      aoa: summaryAoa,
+      textCols: [0, 1],
+      freeze: true,
+      autofilter: false,
+      cols: [22, 60],
+    },
+    {
+      name: "All SKUs",
+      aoa: allAoa,
+      textCols: [2, 3],
+      freeze: true,
+      autofilter: true,
+      cols: [12, 14, 14, 16, 40, 10, 10, 10, 10, 28],
+    },
+    {
+      name: "By PK",
+      aoa: byPkAoa,
+      textCols: [2, 3],
+      freeze: true,
+      autofilter: true,
+      cols: [16, 6, 14, 16, 40, 14, 8],
+    },
+  ];
+
+  if (opts.includeStatusSheets) {
+    [
+      { key: "leftover", name: "ยังไม่แพ็ค" },
+      { key: "over", name: "เกิน" },
+      { key: "missing", name: "ไม่มีใน POS" },
+      { key: "done", name: "ครบ" },
+    ].forEach(function (s) {
+      var list = check[s.key] || [];
+      sheets.push({
+        name: s.name,
+        aoa: [CTR_CHECK_ALL_HEADERS.slice()].concat(list.map(skuRow)),
+        textCols: [2, 3],
+        freeze: true,
+        autofilter: true,
+        cols: [12, 14, 14, 16, 40, 10, 10, 10, 10, 28],
+      });
+    });
+  }
+
+  return {
+    fileName: fileName,
+    shortName: short,
+    stamp: stamp,
+    pkNos: pkNos,
+    sheets: sheets,
+  };
+}
+
 /**
  * Check one SKU against SOH.
  * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
@@ -1037,5 +1271,9 @@ if (typeof window !== "undefined") {
     packingSohSummary: packingSohSummary,
     filterSohLeftover: filterSohLeftover,
     packingCounterCheck: packingCounterCheck,
+    packingCounterCheckStatusLabel: packingCounterCheckStatusLabel,
+    packingCounterCheckShortName: packingCounterCheckShortName,
+    packingCounterCheckExportStamp: packingCounterCheckExportStamp,
+    buildCounterCheckExcelData: buildCounterCheckExcelData,
   };
 }
