@@ -10,6 +10,7 @@ import {
   filterRowsByType,
   counterNamesDeduped,
   stripPlaceListLabel,
+  packingLookupAction,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -117,4 +118,11 @@ test("packing from datalist labels", () => {
   ]);
   assert.equal(stripPlaceListLabel("ICON-ADP · ICONSIAM - NICHE ADP"), "ICONSIAM - NICHE ADP");
   assert.equal(stripPlaceListLabel("Pullback to Office"), "Pullback to Office");
+});
+
+test("packingLookupAction always picks on multi-SKU", () => {
+  assert.equal(packingLookupAction(0), "miss");
+  assert.equal(packingLookupAction(1), "add");
+  assert.equal(packingLookupAction(2), "pick");
+  assert.equal(packingLookupAction(5), "pick");
 });

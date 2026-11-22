@@ -164,6 +164,7 @@ body.mode-count .or,body.mode-count .foot{display:none}
 .pk-type-filt .sc-chips{margin-bottom:0;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
 .pk-type-filt .sc-chips button.on{background:#8b0f14;color:#fff;border-color:#8b0f14;font-weight:500}
 .sug-recent .sug-name{font-weight:500;color:#8b0f14}
+.sug-inbox{display:inline-block;margin-left:6px;background:#8b0f14;color:#fff;border-radius:8px;font-size:10.5px;padding:1px 7px;font-weight:500;vertical-align:middle}
 .sc-over-card{background:#fff;border:1px solid #e3cfae;border-radius:12px;padding:10px 8px;text-align:center;cursor:pointer}
 .sc-over-card .k{font:600 12px Prompt;color:#8b0f14}
 .sc-over-card .v{font:700 12.5px Prompt;color:#2a1a17;margin-top:2px;white-space:nowrap}
@@ -2530,10 +2531,9 @@ function pkScan(text,typed){
   var allHits=lookup(code);
   var hits=searchTypeFilterRows(allHits);
   if(!hits.length&&allHits&&allHits.length){pkScanTypeBlocked(allHits,code,qty);pkAfter();return;}
-  if(hits&&hits.length===1){pkAdd(hits[0],code,qty);pkAfter();return;}
-  if(hits&&hits.length>1){
-    var inBox=hits.filter(function(h){return findLine(b,"S:"+String(h.sku).toUpperCase());});
-    if(inBox.length===1){pkAdd(inBox[0],code,qty);pkAfter();return;}
+  var act=window.CatalogCore&&CatalogCore.packingLookupAction?CatalogCore.packingLookupAction(hits?hits.length:0):(hits&&hits.length===1?"add":(hits&&hits.length>1?"pick":"miss"));
+  if(act==="add"){pkAdd(hits[0],code,qty);pkAfter();return;}
+  if(act==="pick"){
     pkPick(hits,code,"พบ "+hits.length+" SKU ที่ใช้รหัสนี้ · เลือกสินค้าที่แพ็ค / pick one",false,qty);
     return;
   }
@@ -2574,8 +2574,21 @@ function closeSheet(resume){
 }
 function pkPick(rows,text,msg,allowUnknown,qty){
   qty=Math.max(1,Math.round(Number(qty)||1));
+  var b=curBox();
   var body=openSheet("เลือกสินค้า · Pick item",msg+" · "+String(text||"").trim());
-  rows.forEach(function(row){body.appendChild(sugButton(row,"",function(){closeSheet(false);pkAdd(row,text,qty);pkAfter();}));});
+  rows.forEach(function(row){
+    var btn=sugButton(row,"",function(){closeSheet(false);pkAdd(row,text,qty);pkAfter();});
+    var line=b?findLine(b,"S:"+String(row.sku).toUpperCase()):null;
+    if(line&&Number(line.qty)>0){
+      var badge=document.createElement("span");
+      badge.className="sug-inbox";
+      badge.textContent="ในกล่อง ×"+line.qty;
+      var meta=btn.querySelector(".sug-meta");
+      if(meta) meta.appendChild(badge);
+      else btn.appendChild(badge);
+    }
+    body.appendChild(btn);
+  });
   if(allowUnknown){
     var u=document.createElement("button");u.type="button";u.className="btn2";u.textContent="＋ ไม่มีในรายการ → เพิ่มเป็น NOT IN MASTER";
     u.onclick=function(){closeSheet(false);pkUnknown(text);};
