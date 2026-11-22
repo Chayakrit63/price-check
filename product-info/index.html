@@ -284,6 +284,12 @@ body.typing .tabbar{display:none}
 .pk-soh-chip.hidden{display:none}
 .pk-soh-warn{display:block;margin-top:4px;font:500 12.5px Prompt;color:#9a5b00}
 .pk-soh-miss{color:#a3161c}
+.pk-soh-line{display:block;margin-top:3px;font:500 11px Prompt;line-height:1.3;color:#9a8670;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.pk-soh-line.ok{color:#9a8670}
+.pk-soh-line.done{color:#2e7d32}
+.pk-soh-line.over{color:#a3161c}
+.pk-soh-line.miss{color:#9a5b00;white-space:normal}
+.sug-pos{display:inline-block;margin-left:6px;border-radius:8px;font-size:10.5px;padding:1px 7px;font-weight:500;vertical-align:middle;background:#f5ebe0;color:#6b5344;white-space:nowrap}
 .soh-preview{width:100%;border-collapse:collapse;font:400 12.5px Prompt;margin-top:8px}
 .soh-preview th,.soh-preview td{border-bottom:1px solid #f1e3cf;padding:6px 8px;text-align:left}
 .soh-preview th{color:#8b0f14;font-weight:500}
@@ -1760,9 +1766,14 @@ function sugButton(row,q,onPick){
   btn.setAttribute("role","option");
   var cls=avClass(row.av);
   var eans=row.eans||[];
+  var posBadge="";
+  if(MODE==="pack"&&PKVIEW==="box"){
+    var pos=formatSohPosBadgeFn(row.sku, pkActiveSohMap());
+    if(pos) posBadge=' <span class="sug-pos">'+esc(pos)+"</span>";
+  }
   btn.innerHTML='<div class="sug-top"><div class="sug-copy"><div class="sug-brand">'+highlight(row.brand||"",q)+'</div><div class="sug-name">'+highlight(row.desc||"",q)+"</div></div>"+
     '<span class="sug-av av '+cls+'">'+(cls==="a"?"Active":(cls==="w"?"Whilst":esc(row.av)))+"</span></div>"+
-    '<div class="sug-meta">'+highlight(row.sku||"",q)+" · "+(eans.length?eans.map(function(e){return highlight(e,q);}).join(", "):"no EAN")+"</div>";
+    '<div class="sug-meta">'+highlight(row.sku||"",q)+" · "+(eans.length?eans.map(function(e){return highlight(e,q);}).join(", "):"no EAN")+posBadge+"</div>";
   btn.addEventListener("mousedown",function(e){e.preventDefault();});
   btn.addEventListener("click",function(e){e.preventDefault();onPick();});
   return btn;
@@ -2482,6 +2493,26 @@ function packingSkuQtyMapFn(lines){
   if(window.CatalogCore&&CatalogCore.packingSkuQtyMap) return CatalogCore.packingSkuQtyMap(lines);
   var m={}; (lines||[]).forEach(function(l){var s=String(l.sku||"").toUpperCase(); if(!s)return; m[s]=(m[s]||0)+(Number(l.qty)||0);}); return m;
 }
+function packingSohLineInfoFn(sku, packed, map){
+  if(window.CatalogCore&&CatalogCore.packingSohLineInfo) return CatalogCore.packingSohLineInfo(sku, packed, map);
+  return null;
+}
+function formatSohPosBadgeFn(sku, map){
+  if(window.CatalogCore&&CatalogCore.formatSohPosBadge) return CatalogCore.formatSohPosBadge(sku, map);
+  return "";
+}
+function pkActiveSohMap(){
+  var b=curBox();
+  var soh=pkSohForFrom(b&&b.from);
+  return soh&&soh.map?soh.map:null;
+}
+function pkSohLineHtml(b, sku){
+  var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return "";
+  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var info=packingSohLineInfoFn(sku, packed[String(sku||"").toUpperCase()]||0, soh.map);
+  if(!info) return "";
+  return '<span class="pk-soh-line '+esc(info.className)+'">'+esc(info.text)+"</span>";
+}
 function fillSohCtrList(){
   var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):counterNamesDedupedFallback(pkCounters||[]);
   var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames?CatalogCore.mergePinnedPlaceNames:function(p,r){return (p||[]).concat(r||[]);};
@@ -2555,7 +2586,7 @@ function pkSohWarnForSku(b, sku){
   return packingSohCheckFn(k, packed[k]||0, soh.map);
 }
 function pkAfterSohWarn(b, sku){
-  var c=pkSohWarnForSku(b, sku); if(!c||c.status==="ok") return;
+  var c=pkSohWarnForSku(b, sku); if(!c||(c.status!=="missing"&&c.status!=="over")) return;
   toast(c.warn,"warn");
   pkFeedback("warn");
 }
@@ -3112,10 +3143,10 @@ function pkRenderLines(){
       for(var s=1;s<=n;s++) if(s!==k) mv+='<option value="'+s+'">กล่อง '+s+" / "+n+"</option>";
       mv+="</select>";
     }
-    var sohW=l.sku?pkSohWarnForSku(b,l.sku):null;
-    var sohHtml=sohW&&sohW.status!=="ok"?'<span class="pk-soh-warn'+(sohW.status==="missing"?" pk-soh-miss":"")+'">⚠ '+esc(sohW.warn)+"</span>":"";
+    var sohHtml=l.sku?pkSohLineHtml(b,l.sku):"";
     el.innerHTML='<div class="ln-main"><div class="ln-d">'+esc(l.desc||"—")+'</div><div class="ln-m">'+esc(l.sku||"—")+" · "+esc(l.ean||"no barcode")+(l.brand?" · "+esc(l.brand):"")+"</div>"+
-      (l.flag?'<span class="ln-f">⚠ '+esc(l.flag)+"</span>":"")+sohHtml+"</div>"+
+      sohHtml+
+      (l.flag?'<span class="ln-f">⚠ '+esc(l.flag)+"</span>":"")+"</div>"+
       mv+
       '<div class="ln-q"><button type="button" class="qb" data-a="dec" aria-label="minus">−</button><input class="qi" type="number" inputmode="numeric" min="1" max="99999" value="'+(Number(l.qty)||0)+'" aria-label="qty"><button type="button" class="qb" data-a="inc" aria-label="plus">+</button></div>'+
       '<button type="button" class="ln-x" data-a="del" aria-label="delete">×</button>';
