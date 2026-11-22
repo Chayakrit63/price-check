@@ -2015,6 +2015,7 @@ var pkResumeAt=0, pkTouched="", pkSheetOpen=false, pkViewBox=null, pkLabelBox=nu
 var PK_BIG_QTY=(window.CatalogCore&&CatalogCore.PK_BIG_QTY)||20;
 var pkUndo=null, pkLastAddSku="", pkLastAddAt=0, pkSaveFail=false;
 var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
+var PK_PINNED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
 var QR_LIB="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
 var BC_LIB="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
 function parsePackScan(text){
@@ -2339,7 +2340,14 @@ function fillPlaceLists(){
     if(window.CatalogCore&&CatalogCore.stripPlaceListLabel) return CatalogCore.stripPlaceListLabel(s);
     return stripPlaceListLabelFallback(s);
   });
-  fillDatalist("from-list", names.concat(fromHist));
+  var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames
+    ?CatalogCore.mergePinnedPlaceNames
+    :function(pinned, rest){
+      var seen={},out=[];
+      function add(s){s=String(s||"").trim();if(!s)return;var k=s.toLowerCase();if(seen[k])return;seen[k]=1;out.push(s);}
+      (pinned||[]).forEach(add);(rest||[]).forEach(add);return out;
+    };
+  fillDatalist("from-list", merge(PK_PINNED_FROM, names.concat(fromHist)));
 }
 function counterNamesDedupedFallback(counters){
   var seen={},out=[];

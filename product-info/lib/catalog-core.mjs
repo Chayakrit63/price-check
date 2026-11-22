@@ -222,6 +222,23 @@ export function counterNamesDeduped(counters) {
   return out;
 }
 
+/** Pin names first, then other place names; case-insensitive dedupe. */
+export function mergePinnedPlaceNames(pinned, names) {
+  var seen = {};
+  var out = [];
+  function add(s) {
+    s = String(s || "").trim();
+    if (!s) return;
+    var k = s.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push(s);
+  }
+  (pinned || []).forEach(add);
+  (names || []).forEach(add);
+  return out;
+}
+
 /** Strip legacy datalist values like "ICON-ADP · ICONSIAM - NICHE ADP" → place name only. */
 export function stripPlaceListLabel(s) {
   s = String(s || "").trim();
@@ -380,6 +397,7 @@ if (typeof window !== "undefined") {
     searchQueryOnly: searchQueryOnly,
     counterPlaceName: counterPlaceName,
     counterNamesDeduped: counterNamesDeduped,
+    mergePinnedPlaceNames: mergePinnedPlaceNames,
     stripPlaceListLabel: stripPlaceListLabel,
     packingLookupAction: packingLookupAction,
     sortPackingLinesForDisplay: sortPackingLinesForDisplay,
