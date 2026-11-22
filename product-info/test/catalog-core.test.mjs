@@ -35,6 +35,7 @@ import {
   formatPackingSohLastStatus,
   packingSohSummary,
   filterSohLeftover,
+  packingCounterCheck,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -360,4 +361,77 @@ test("packingSohSummary counts + leftover filter", () => {
   assert.equal(filterSohLeftover(left, "zzz", "").length, 0);
   assert.equal(filterSohLeftover(left, "", "nishane").length, 1);
   assert.equal(filterSohLeftover(left, "", "other").length, 0);
+});
+
+test("packingCounterCheck live POPUP shape (done+leftover+over = 110)", () => {
+  // Live expectations: SOH 110/741; 21 PKs; packed 479; done 74; leftover 34/264;
+  // over 2/2 (H4GK010000 6→7, H4GR010000 5→6); not-in-POS 0
+  var sohRows = [];
+  var i;
+  sohRows.push({ sku: "H4GK010000", qty: 6, desc: "Over A", barcode: "3700A" });
+  sohRows.push({ sku: "H4GR010000", qty: 5, desc: "Over B", barcode: "3700B" });
+  for (i = 1; i <= 74; i++) {
+    sohRows.push({ sku: "DONE" + String(i).padStart(4, "0"), qty: 5, desc: "Done " + i });
+  }
+  for (i = 1; i <= 32; i++) {
+    sohRows.push({ sku: "LEFT" + String(i).padStart(4, "0"), qty: 7, desc: "Left " + i });
+  }
+  sohRows.push({ sku: "LEFT0033", qty: 20, desc: "Left 33" });
+  sohRows.push({ sku: "LEFT0034", qty: 20, desc: "Left 34" });
+  assert.equal(sohRows.length, 110);
+  // pcs = 11 + 370 + 224 + 40 = 645; need 741 → +96 into done qtys
+  for (i = 0; i < 96; i++) sohRows[2 + (i % 74)].qty += 1;
+  assert.equal(
+    sohRows.reduce((n, r) => n + r.qty, 0),
+    741
+  );
+
+  var soh = sohMapFromRows(sohRows);
+  var bundles = [];
+  bundles.push({
+    boxNo: "PK-261122-007",
+    lines: [
+      { sku: "H4GK010000", qty: 7 },
+      { sku: "H4GR010000", qty: 6 },
+    ],
+  });
+  var doneLines = [];
+  var packedFromDone = 0;
+  for (i = 1; i <= 74; i++) {
+    var sku = "DONE" + String(i).padStart(4, "0");
+    var q = soh[sku].qty;
+    doneLines.push({ sku: sku, qty: q });
+    packedFromDone += q;
+  }
+  assert.equal(packedFromDone + 13, 479);
+  var chunk = Math.ceil(doneLines.length / 20);
+  for (i = 0; i < 20; i++) {
+    bundles.push({
+      boxNo: "PK-261122-" + String(8 + i).padStart(3, "0"),
+      lines: doneLines.slice(i * chunk, (i + 1) * chunk),
+    });
+  }
+  assert.equal(bundles.length, 21);
+
+  var check = packingCounterCheck(soh, bundles);
+  assert.equal(check.totals.sohSkuCount, 110);
+  assert.equal(check.totals.sohPcs, 741);
+  assert.equal(check.totals.pkCount, 21);
+  assert.equal(check.totals.packedPcs, 479);
+  assert.equal(check.totals.doneSku, 74);
+  assert.equal(check.totals.leftoverSku, 34);
+  assert.equal(check.totals.leftoverPcs, 264);
+  assert.equal(check.totals.overSku, 2);
+  assert.equal(check.totals.overPcs, 2);
+  assert.equal(check.totals.missingSku, 0);
+  assert.equal(check.over.find((r) => r.sku === "H4GK010000").packed, 7);
+  assert.equal(check.over.find((r) => r.sku === "H4GR010000").packed, 6);
+  assert.deepEqual(check.over.find((r) => r.sku === "H4GK010000").boxNos, ["PK-261122-007"]);
+
+  var replaced = packingCounterCheck(soh, [
+    ...bundles.filter((b) => b.boxNo !== "PK-261122-007"),
+    { boxNo: "PK-261122-007", lines: [{ sku: "H4GK010000", qty: 6 }, { sku: "H4GR010000", qty: 5 }] },
+  ]);
+  assert.equal(replaced.totals.overSku, 0);
+  assert.equal(replaced.totals.doneSku, 76);
 });

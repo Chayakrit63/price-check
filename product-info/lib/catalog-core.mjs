@@ -724,6 +724,163 @@ export function packingSohSummary(lines, sohMap) {
   };
 }
 
+/**
+ * Counter-level SOH check across many packing lists.
+ * @param {object} sohMap - { SKU: { qty, barcode, desc } }
+ * @param {Array<{ boxNo?: string, lines: Array<{sku,qty,desc?,ean?,barcode?,brand?}> }>} pkBundles
+ * @returns {null | {
+ *   totals: {
+ *     pkCount, packedPcs, sohPcs, sohSkuCount,
+ *     doneSku, leftoverSku, leftoverPcs, overSku, overPcs, missingSku, missingPcs
+ *   },
+ *   rows: Array<{
+ *     sku, desc, barcode, brand, soh, packed, left, over, status, boxNos
+ *   }>,
+ *   leftover, over, missing, done
+ * }}
+ */
+export function packingCounterCheck(sohMap, pkBundles) {
+  if (!sohMap) return null;
+  var bundles = pkBundles || [];
+  var packed = {};
+  var meta = {};
+  var boxSet = {};
+  bundles.forEach(function (bundle) {
+    var boxNo = String((bundle && bundle.boxNo) || "").trim();
+    if (boxNo) boxSet[boxNo] = 1;
+    (bundle && bundle.lines ? bundle.lines : []).forEach(function (l) {
+      var sku = String((l && l.sku) || "")
+        .trim()
+        .toUpperCase();
+      if (!sku) return;
+      var q = Number(l.qty) || 0;
+      if (q <= 0) return;
+      packed[sku] = (packed[sku] || 0) + q;
+      if (!meta[sku]) meta[sku] = { desc: "", barcode: "", brand: "", boxNos: {} };
+      if (l.desc && !meta[sku].desc) meta[sku].desc = String(l.desc);
+      var bc = l.barcode || l.ean || "";
+      if (bc && !meta[sku].barcode) meta[sku].barcode = String(bc);
+      if (l.brand && !meta[sku].brand) meta[sku].brand = String(l.brand);
+      if (boxNo) meta[sku].boxNos[boxNo] = 1;
+    });
+  });
+
+  var sohPcs = 0;
+  var sohSkuCount = 0;
+  var doneSku = 0;
+  var leftoverSku = 0;
+  var leftoverPcs = 0;
+  var overSku = 0;
+  var overPcs = 0;
+  var packedPcs = 0;
+  Object.keys(packed).forEach(function (sku) {
+    packedPcs += packed[sku];
+  });
+
+  var rows = [];
+  Object.keys(sohMap).forEach(function (sku) {
+    var soh = Number(sohMap[sku].qty) || 0;
+    if (soh <= 0) return;
+    sohSkuCount++;
+    sohPcs += soh;
+    var p = packed[sku] || 0;
+    var m = meta[sku] || { desc: "", barcode: "", brand: "", boxNos: {} };
+    var status;
+    var left = 0;
+    var over = 0;
+    // ครบ = exact match only; เกิน counted separately (done+leftover+over = sohSkuCount)
+    if (p > soh) {
+      status = "over";
+      over = p - soh;
+      overSku++;
+      overPcs += over;
+    } else if (p === soh) {
+      status = "done";
+      doneSku++;
+    } else {
+      status = "leftover";
+      left = soh - p;
+      leftoverSku++;
+      leftoverPcs += left;
+    }
+    rows.push({
+      sku: sku,
+      desc: sohMap[sku].desc || m.desc || "",
+      barcode: sohMap[sku].barcode || m.barcode || "",
+      brand: m.brand || "",
+      soh: soh,
+      packed: p,
+      left: left,
+      over: over,
+      status: status,
+      boxNos: Object.keys(m.boxNos || {}).sort(),
+    });
+  });
+
+  var missingSku = 0;
+  var missingPcs = 0;
+  var missing = [];
+  Object.keys(packed).forEach(function (sku) {
+    if (sohMap[sku]) return;
+    missingSku++;
+    missingPcs += packed[sku];
+    var m = meta[sku] || { desc: "", barcode: "", brand: "", boxNos: {} };
+    missing.push({
+      sku: sku,
+      desc: m.desc || "",
+      barcode: m.barcode || "",
+      brand: m.brand || "",
+      soh: 0,
+      packed: packed[sku],
+      left: 0,
+      over: packed[sku],
+      status: "missing",
+      boxNos: Object.keys(m.boxNos || {}).sort(),
+    });
+  });
+
+  rows.sort(function (a, b) {
+    if (a.status !== b.status) {
+      var order = { leftover: 0, over: 1, done: 2 };
+      return (order[a.status] || 9) - (order[b.status] || 9);
+    }
+    if (a.status === "leftover") return b.left - a.left || a.sku.localeCompare(b.sku);
+    if (a.status === "over") return b.over - a.over || a.sku.localeCompare(b.sku);
+    return a.sku.localeCompare(b.sku);
+  });
+
+  var leftover = rows.filter(function (r) {
+    return r.status === "leftover";
+  });
+  var over = rows.filter(function (r) {
+    return r.status === "over";
+  });
+  var done = rows.filter(function (r) {
+    return r.status === "done";
+  });
+
+  return {
+    totals: {
+      pkCount: Object.keys(boxSet).length || bundles.length,
+      packedPcs: packedPcs,
+      sohPcs: sohPcs,
+      sohSkuCount: sohSkuCount,
+      doneSku: doneSku,
+      leftoverSku: leftoverSku,
+      leftoverPcs: leftoverPcs,
+      overSku: overSku,
+      overPcs: overPcs,
+      missingSku: missingSku,
+      missingPcs: missingPcs,
+    },
+    rows: rows.concat(missing),
+    leftover: leftover,
+    over: over,
+    missing: missing,
+    done: done,
+  };
+}
+
 /** Filter leftover list by query (sku / barcode / desc) and optional brand. */
 export function filterSohLeftover(rows, query, brand) {
   var q = String(query || "")
@@ -876,5 +1033,6 @@ if (typeof window !== "undefined") {
     formatPackingSohLastStatus: formatPackingSohLastStatus,
     packingSohSummary: packingSohSummary,
     filterSohLeftover: filterSohLeftover,
+    packingCounterCheck: packingCounterCheck,
   };
 }
