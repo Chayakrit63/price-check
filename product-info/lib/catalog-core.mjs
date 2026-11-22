@@ -260,6 +260,80 @@ export function sortPackingLinesForDisplay(lines) {
     });
 }
 
+export var PK_BIG_QTY = 20;
+
+export function packingIsBigQty(qty, threshold) {
+  var lim = threshold == null ? PK_BIG_QTY : threshold;
+  return Number(qty) > lim;
+}
+
+/** Summarize packing lines by type bucket (lines + pieces). */
+export function packingTypeSummary(lines, bucketFn) {
+  bucketFn = bucketFn || rowTypeBucket;
+  var out = {
+    STOCK: { lines: 0, qty: 0 },
+    TESTER: { lines: 0, qty: 0 },
+    GWPS: { lines: 0, qty: 0 },
+    OTH: { lines: 0, qty: 0 },
+    totalLines: 0,
+    totalQty: 0,
+  };
+  (lines || []).forEach(function (l) {
+    var q = Number(l.qty) || 0;
+    if (q <= 0) return;
+    out.totalLines++;
+    out.totalQty += q;
+    var b = bucketFn(l);
+    if (!out[b]) out[b] = { lines: 0, qty: 0 };
+    out[b].lines++;
+    out[b].qty += q;
+  });
+  return out;
+}
+
+export function packingBigQtyLines(lines, threshold) {
+  var lim = threshold == null ? PK_BIG_QTY : threshold;
+  return (lines || []).filter(function (l) {
+    return (Number(l.qty) || 0) >= lim;
+  });
+}
+
+/** Sort pick candidates: SKUs already in the box first, then original order. */
+export function sortPickRowsInBoxFirst(rows, inBoxSkuSet) {
+  var set = inBoxSkuSet || {};
+  return (rows || [])
+    .map(function (r, i) {
+      return { r: r, i: i, in: !!set[String(r.sku || "").toUpperCase()] };
+    })
+    .sort(function (a, b) {
+      if (a.in !== b.in) return a.in ? -1 : 1;
+      return a.i - b.i;
+    })
+    .map(function (x) {
+      return x.r;
+    });
+}
+
+/**
+ * Compute undo result for one add.
+ * @returns {{ remove: boolean, nextQty: number }}
+ */
+export function packingUndoResult(prevQty, addedQty, created) {
+  var add = Math.max(1, Math.round(Number(addedQty) || 1));
+  if (created) return { remove: true, nextQty: 0 };
+  var next = Math.max(0, (Number(prevQty) || 0) - add);
+  return { remove: next <= 0, nextQty: next };
+}
+
+export function typeBucketLabel(bucket) {
+  var b = String(bucket || "").toUpperCase();
+  if (b === "TESTER") return "Tester";
+  if (b === "GWPS") return "GWPs";
+  if (b === "OTH") return "OTH";
+  if (b === "STOCK") return "Stock";
+  return b || "Stock";
+}
+
 export function filterRowsByType(rows, typeCat, bucketFn) {
   bucketFn = bucketFn || rowTypeBucket;
   if (!typeCat || typeCat === "ALL") return rows ? rows.slice() : [];
@@ -290,6 +364,13 @@ if (typeof window !== "undefined") {
     stripPlaceListLabel: stripPlaceListLabel,
     packingLookupAction: packingLookupAction,
     sortPackingLinesForDisplay: sortPackingLinesForDisplay,
+    PK_BIG_QTY: PK_BIG_QTY,
+    packingIsBigQty: packingIsBigQty,
+    packingTypeSummary: packingTypeSummary,
+    packingBigQtyLines: packingBigQtyLines,
+    sortPickRowsInBoxFirst: sortPickRowsInBoxFirst,
+    packingUndoResult: packingUndoResult,
+    typeBucketLabel: typeBucketLabel,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,
