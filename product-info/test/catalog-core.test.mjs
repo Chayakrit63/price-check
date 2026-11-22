@@ -9,6 +9,7 @@ import {
   editDistance,
   filterRowsByType,
   counterNamesDeduped,
+  mergePinnedPlaceNames,
   stripPlaceListLabel,
   packingLookupAction,
   sortPackingLinesForDisplay,
@@ -126,6 +127,11 @@ test("packing from datalist labels", () => {
   ]);
   assert.equal(stripPlaceListLabel("ICON-ADP · ICONSIAM - NICHE ADP"), "ICONSIAM - NICHE ADP");
   assert.equal(stripPlaceListLabel("Pullback to Office"), "Pullback to Office");
+  var pinned = ["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
+  assert.deepEqual(mergePinnedPlaceNames(pinned, ["ICONSIAM - NICHE ADP", pinned[0]]), [
+    pinned[0],
+    "ICONSIAM - NICHE ADP",
+  ]);
 });
 
 test("packingLookupAction always picks on multi-SKU", () => {
