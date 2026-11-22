@@ -231,7 +231,7 @@ body.typing .tabbar{display:none}
 .pk-body{margin:6px 18px 20px}
 .pk-lh{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 8px;color:#8b0f14;font-size:14px;font-weight:500}
 .ln{display:flex;align-items:center;gap:8px;background:#fffdf9;border:1px solid #e3cfae;border-radius:14px;padding:10px 10px 10px 12px;margin-bottom:8px;transition:background .6s}
-.ln.flash{background:#fdf3d9}
+.ln.flash{background:#f8e4e1;box-shadow:inset 3px 0 0 #8b0f14;transition:background .4s ease,box-shadow .4s ease}
 .ln.nim{border-color:#e9b25b;background:#fffaf0}
 .ln-main{flex:1;min-width:0}
 .ln-d{font-size:13.5px;line-height:1.35;color:#2a1a17;word-break:break-word}
@@ -1997,6 +1997,19 @@ function linesOfBox(b, seq){
   seq=seq||activeBoxOf(b);
   return packItemList(b).filter(function(l){return boxSeqOf(l)===seq;});
 }
+function sortPackingLinesForDisplay(lines){
+  if(window.CatalogCore&&CatalogCore.sortPackingLinesForDisplay) return CatalogCore.sortPackingLinesForDisplay(lines);
+  return (lines||[]).map(function(l,i){return {l:l,i:i};}).sort(function(a,b){
+    var ta=Number(a.l&&a.l.touched)||0, tb=Number(b.l&&b.l.touched)||0;
+    if(ta!==tb) return tb-ta;
+    return b.i-a.i;
+  }).map(function(x){return x.l;});
+}
+function pkMarkTouched(b, line){
+  if(!b||!line) return;
+  b.touchSeq=(Number(b.touchSeq)||0)+1;
+  line.touched=b.touchSeq;
+}
 function displayBoxOf(b, seq){
   return activeBoxOf({boxCount:boxCountOf(b),activeBox:seq||(b&&b.activeBox)||1})+"/"+boxCountOf(b);
 }
@@ -2440,9 +2453,9 @@ function pkRenderLines(){
   var b=curBox(); var box=$("pk-lines"); box.innerHTML="";
   if(!b) return;
   var k=activeBoxOf(b), n=boxCountOf(b);
-  var vis=linesOfBox(b,k);
+  var vis=sortPackingLinesForDisplay(linesOfBox(b,k));
   if(!vis.length){box.innerHTML='<div class="pk-empty">สแกนบาร์โค้ด / QR หรือพิมพ์ค้นหา เพื่อใส่สินค้าในกล่อง '+k+' / '+n+'<br>Scan or search to add items to this box</div>';return;}
-  for(var i=vis.length-1;i>=0;i--){
+  for(var i=0;i<vis.length;i++){
     var l=vis[i];
     var el=document.createElement("div");
     el.className="ln"+(l.flag?" nim":"")+(l.k===pkTouched?" flash":"");
@@ -2460,7 +2473,14 @@ function pkRenderLines(){
       '<button type="button" class="ln-x" data-a="del" aria-label="delete">×</button>';
     box.appendChild(el);
   }
-  if(pkTouched){var f=box.querySelector(".ln.flash");setTimeout(function(){if(f) f.classList.remove("flash");},900);}
+  if(pkTouched){
+    var f=box.querySelector(".ln.flash");
+    clearTimeout(pkRenderLines.ft);
+    pkRenderLines.ft=setTimeout(function(){
+      if(f) f.classList.remove("flash");
+      if(pkTouched) pkTouched="";
+    },1500);
+  }
 }
 function pkLineEvent(ev){
   var t=ev.target, row=t.closest&&t.closest(".ln"); if(!row) return;
@@ -2508,6 +2528,7 @@ function pkAdd(row,scanned,qty){
   var l=findLine(b,k);
   if(l) l.qty=(Number(l.qty)||0)+qty;
   else{l={k:k,sku:row.sku,ean:matchedEan(row,scanned),desc:row.desc||"",brand:row.brand||"",qty:qty,flag:"",boxSeq:activeBoxOf(b)};b.lines.push(l);}
+  pkMarkTouched(b,l);
   b.dirty=true; pkTouched=k; pkPersist(); pkRenderBox();
   toast("+"+qty+"  "+(row.desc||row.sku)+"  = "+l.qty,"ok");
   logScan(scanned||row.sku,row.sku);
@@ -2519,6 +2540,7 @@ function pkAddUnknown(code,desc,qty){
   var l=findLine(b,k);
   if(l){l.qty=(Number(l.qty)||0)+qty;if(desc) l.desc=desc;}
   else{l={k:k,sku:"",ean:String(code||"").trim().slice(0,60),desc:desc,brand:"",qty:qty,flag:"NOT IN MASTER",boxSeq:activeBoxOf(b)};b.lines.push(l);}
+  pkMarkTouched(b,l);
   b.dirty=true; pkTouched=k; pkPersist(); pkRenderBox();
   toast("+"+qty+"  NOT IN MASTER · "+desc,"ok");
   logScan(code,"");
@@ -2538,7 +2560,7 @@ function pkScan(text,typed){
     return;
   }
   var nl=findLine(b,"N:"+norm(code).toUpperCase());
-  if(nl){nl.qty=(Number(nl.qty)||0)+qty;b.dirty=true;pkTouched=nl.k;pkPersist();pkRenderBox();toast("+"+qty+"  NOT IN MASTER · "+nl.desc+"  = "+nl.qty,"ok");pkAfter();return;}
+  if(nl){nl.qty=(Number(nl.qty)||0)+qty;pkMarkTouched(b,nl);b.dirty=true;pkTouched=nl.k;pkPersist();pkRenderBox();toast("+"+qty+"  NOT IN MASTER · "+nl.desc+"  = "+nl.qty,"ok");pkAfter();return;}
   if(typed){
     var s=suggest(code);
     var srows=searchTypeFilterRows(s.map(function(x){return x.row;}));

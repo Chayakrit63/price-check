@@ -11,6 +11,7 @@ import {
   counterNamesDeduped,
   stripPlaceListLabel,
   packingLookupAction,
+  sortPackingLinesForDisplay,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -125,4 +126,21 @@ test("packingLookupAction always picks on multi-SKU", () => {
   assert.equal(packingLookupAction(1), "add");
   assert.equal(packingLookupAction(2), "pick");
   assert.equal(packingLookupAction(5), "pick");
+});
+
+test("sortPackingLinesForDisplay newest touched first", () => {
+  var lines = [
+    { k: "S:A", touched: 1 },
+    { k: "S:B" },
+    { k: "S:C", touched: 3 },
+    { k: "S:D" },
+  ];
+  assert.deepEqual(
+    sortPackingLinesForDisplay(lines).map((l) => l.k),
+    ["S:C", "S:A", "S:D", "S:B"]
+  );
+  assert.deepEqual(
+    sortPackingLinesForDisplay([{ k: "1" }, { k: "2" }, { k: "3" }]).map((l) => l.k),
+    ["3", "2", "1"]
+  );
 });
