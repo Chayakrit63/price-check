@@ -1431,10 +1431,49 @@ function showScan(){
   else showPhotoUi();
 }
 var LASTHITS=null, LASTQ="";
+var LASTLIST=null; // {hits,q,typeCat} for Info-tab Back to list
+function infoListDecision(hits, q, typeCat){
+  if(window.CatalogCore&&CatalogCore.infoBackListDecision){
+    return CatalogCore.infoBackListDecision(hits,{q:q,typeCat:typeCat||searchTypeGet()});
+  }
+  var list=(hits||[]).filter(Boolean);
+  if(list.length>1) return {showBack:true,action:"list",hits:list,q:q||"",typeCat:typeCat||searchTypeGet()||"ALL"};
+  return {showBack:false,action:"search",hits:null,q:"",typeCat:typeCat||"ALL"};
+}
+function rememberInfoList(hits, q, typeCat){
+  var d=infoListDecision(hits,q,typeCat);
+  if(d.showBack){
+    LASTLIST={hits:d.hits.slice(),q:d.q,typeCat:d.typeCat};
+    LASTHITS=LASTLIST.hits;
+    LASTQ=LASTLIST.q;
+  }else{
+    LASTLIST=null;
+    LASTHITS=null;
+    LASTQ="";
+  }
+  return d;
+}
+function clearInfoList(){
+  LASTLIST=null;
+  LASTHITS=null;
+  LASTQ="";
+}
+function goInfoBackList(){
+  if(MODE!=="info") return;
+  if(LASTLIST&&LASTLIST.hits&&LASTLIST.hits.length>1){
+    if(LASTLIST.typeCat&&searchTypeGet()!==LASTLIST.typeCat) searchTypeSet(LASTLIST.typeCat);
+    showHits(LASTLIST.hits, LASTLIST.q||"");
+    return;
+  }
+  clearInfoList();
+  show($("backlist"),false);
+  showScan();
+  try{$("q").value="";$("q").focus();}catch(e){}
+}
 function showHits(hits, q){
   if(!hits||!hits.length){showNotFound(q);return;}
-  if(hits.length===1){LASTHITS=null;showResult(hits[0], q);return;}
-  LASTHITS=hits; LASTQ=q;
+  if(hits.length===1){clearInfoList();showResult(hits[0], q, false);return;}
+  rememberInfoList(hits, q, searchTypeGet());
   show($("scan"),false); show($("out"),true);
   show($("card-hit"),false); show($("card-miss"),false); show($("backlist"),false);
   show($("multi"),true);
@@ -1451,14 +1490,16 @@ function showResult(row, scanned, fromList){
   show($("multi"),false);
   show($("card-hit"),true);
   show($("card-miss"),false);
-  show($("backlist"),!!(fromList&&LASTHITS));
+  var canBack=!!(fromList&&LASTLIST&&LASTLIST.hits&&LASTLIST.hits.length>1);
+  show($("backlist"),canBack);
   $("r-brand").textContent=row.brand||"";
   $("r-line").textContent=row.line||"";
   $("r-name").textContent=row.desc||"";
   var av=$("r-av"); av.className="av "+avClass(row.av); av.textContent=avLabel(row.av);
   $("r-sku").textContent=row.sku||"—";
   var sc=norm(scanned).toUpperCase(), sg=gtinOf(scanned);
-  var eh=row.eans.map(function(e){
+  var eans=row.eans||[];
+  var eh=eans.map(function(e){
     var eu=norm(e).toUpperCase();
     var hit=sc&&(eu===sc||(sg&&gtinOf(e)===sg)||(/^\d{8,14}$/.test(eu)&&/^\d{8,14}$/.test(sc)&&eu.replace(/^0+/,"")===sc.replace(/^0+/,"")));
     return '<span class="e'+(hit?" hit":"")+'">'+esc(e)+"</span>";
@@ -1626,7 +1667,8 @@ function pkScanTypeBlocked(allHits,text,qty){
 function infoScanTypeBlocked(allHits,text){
   searchScanTypeBlocked(allHits,text,"เลือกเปลี่ยนประเภทแล้วเปิด",function(row,code){
     hideSug();
-    showResult(row,code);
+    rememberInfoList(allHits, code, catalogRowBucket(row));
+    showResult(row,code,!!(LASTLIST&&LASTLIST.hits&&LASTLIST.hits.length>1));
     logScan(code,row.sku);
     stopCam();
   });
@@ -1679,9 +1721,10 @@ function sugButton(row,q,onPick){
   btn.className="sug-item";
   btn.setAttribute("role","option");
   var cls=avClass(row.av);
+  var eans=row.eans||[];
   btn.innerHTML='<div class="sug-top"><div class="sug-copy"><div class="sug-brand">'+highlight(row.brand||"",q)+'</div><div class="sug-name">'+highlight(row.desc||"",q)+"</div></div>"+
     '<span class="sug-av av '+cls+'">'+(cls==="a"?"Active":(cls==="w"?"Whilst":esc(row.av)))+"</span></div>"+
-    '<div class="sug-meta">'+highlight(row.sku||"",q)+" · "+(row.eans.length?row.eans.map(function(e){return highlight(e,q);}).join(", "):"no EAN")+"</div>";
+    '<div class="sug-meta">'+highlight(row.sku||"",q)+" · "+(eans.length?eans.map(function(e){return highlight(e,q);}).join(", "):"no EAN")+"</div>";
   btn.addEventListener("mousedown",function(e){e.preventDefault();});
   btn.addEventListener("click",function(e){e.preventDefault();onPick();});
   return btn;
@@ -1756,10 +1799,18 @@ function pickSug(row,qtyOverride){
   var qty=qtyOverride!=null?qtyOverride:pq.qty;
   hideSug();
   if(MODE==="pack"&&PKVIEW==="box"&&curBox()){$("q").value="";$("q").blur();if(pkAdd(row,pq.query||raw||row.sku,qty,{typed:true,fromPick:true})) pkAfter();return;}
-  LASTHITS=null;
   var qScan=searchQueryText(raw)||row.sku;
+  var listRows=(SUGS||[]).map(function(h){return h&&h.row;}).filter(Boolean);
+  if(listRows.length<2&&LASTLIST&&LASTLIST.hits&&LASTLIST.hits.length>1) listRows=LASTLIST.hits;
+  var fromList=false;
+  if(MODE==="info"&&listRows.length>1){
+    rememberInfoList(listRows, qScan, searchTypeGet());
+    fromList=true;
+  }else if(MODE==="info"){
+    clearInfoList();
+  }
   $("q").value="";
-  showResult(row, qScan);
+  showResult(row, qScan, fromList);
   logScan(qScan, row.sku);
   stopCam();
 }
@@ -1941,9 +1992,11 @@ if($("torch")) $("torch").onclick=function(){toggleTorch();};
 if($("zoom")) $("zoom").onclick=function(){toggleZoom();};
 if($("camsw")) $("camsw").onclick=function(){switchCam();};
 $("reader").addEventListener("click",onCamTap);
-$("backlist").onclick=function(){if(LASTHITS) showHits(LASTHITS,LASTQ);};
+$("backlist").onclick=function(){goInfoBackList();};
 $("next").onclick=function(){
   hideSug();
+  clearInfoList();
+  show($("backlist"),false);
   showScan();
 };
 $("reload").onclick=reloadCatalog;
