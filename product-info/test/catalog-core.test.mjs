@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  VERSION,
   itemTypeBucket,
   rowTypeBucket,
   parseSearchQty,
@@ -37,6 +38,12 @@ import {
   filterSohLeftover,
   packingCounterCheck,
 } from "../lib/catalog-core.mjs";
+
+test("CatalogCore VERSION is a non-empty release id", () => {
+  assert.equal(typeof VERSION, "string");
+  assert.ok(VERSION.length >= 4);
+  assert.equal(typeof packingCounterCheck, "function");
+});
 
 const SAMPLE_ROWS = [
   {

@@ -331,7 +331,8 @@ body.typing .tabbar{display:none}
 .ctr-check-item .l.missing{color:#9a5b00}
 .ctr-check-item .l.done{color:#2e7d32}
 .ctr-check-pks{font:400 11.5px Prompt;color:#8b0f14;margin-top:4px;word-break:break-word}
-.ctr-check-err{padding:16px 8px;color:#a3161c;font:400 13.5px Prompt;text-align:center}
+.ctr-check-err{padding:16px 8px;color:#a3161c;font:400 13.5px Prompt;text-align:center;line-height:1.45}
+.ctr-check-err .btn{margin-top:12px}
 .soh-preview{width:100%;border-collapse:collapse;font:400 12.5px Prompt;margin-top:8px}
 .soh-preview th,.soh-preview td{border-bottom:1px solid #f1e3cf;padding:6px 8px;text-align:left}
 .soh-preview th{color:#8b0f14;font-weight:500}
@@ -747,8 +748,10 @@ body.typing .tabbar{display:none}
 <style id="page-size">@page{size:A5 portrait;margin:8mm}</style>
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
-<script type="module" src="lib/catalog-core.mjs"></script>
+<!-- Bump ?v= with APP_VER / CatalogCore.VERSION on every release so GitHub Pages clients drop stale modules -->
+<script type="module" src="lib/catalog-core.mjs?v=20261122d"></script>
 <script>
+var APP_VER="20261122d";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -766,6 +769,25 @@ var lastAt = 0;
 var decoding = false;
 
 function $(id){return document.getElementById(id);}
+/** True when catalog-core.mjs is missing, outdated (cache), or missing required packing helpers. */
+function pkCatalogCoreStale(){
+  if(!window.CatalogCore) return true;
+  if(CatalogCore.VERSION!==APP_VER) return true;
+  if(typeof CatalogCore.packingCounterCheck!=="function") return true;
+  if(typeof CatalogCore.packingSohSummary!=="function") return true;
+  if(typeof CatalogCore.sohMapFromRows!=="function") return true;
+  return false;
+}
+/** Hard reload with cache-bust query. Drafts live in localStorage (PKKEY) and survive. */
+function pkReloadFresh(){
+  try{ if(typeof pkPersist==="function") pkPersist(); }catch(e){}
+  var u=new URL(location.href);
+  u.searchParams.set("v", String(Date.now()));
+  location.replace(u.href);
+}
+function pkStaleCoreHtml(btnId){
+  return '<div class="ctr-check-err">แอปเป็นเวอร์ชันเก่า — แตะเพื่อโหลดใหม่<br><button type="button" class="btn" id="'+(btnId||"pk-core-reload")+'">โหลดใหม่ · Reload</button></div>';
+}
 var API="https://script.google.com/macros/s/AKfycbwk305ikcfnVjLh4JbCRdgKUZI2W5FDYt0rxt1aQqF0IhrQgtLKO_3Ggg5gXePFEg/exec";
 var STORE="productInfo.catalog.v1";
 var camOk=false;
@@ -2866,6 +2888,11 @@ function pkOpenCounterCheck(seedCounter){
   function paintResult(){
     var host=$("ctr-check-body"); if(!host) return;
     if(state.loading){host.innerHTML='<div class="pk-empty" style="padding:18px 4px">กำลังโหลดใบแพ็ค + SOH…</div>';return;}
+    if(state.err==="STALE"||(state.err&&pkCatalogCoreStale())){
+      host.innerHTML=pkStaleCoreHtml("ctr-check-reload");
+      var rb=$("ctr-check-reload"); if(rb) rb.onclick=function(){pkReloadFresh();};
+      return;
+    }
     if(state.err){host.innerHTML='<div class="ctr-check-err">'+esc(state.err)+'</div>';return;}
     if(!state.check){host.innerHTML='<div class="pk-empty" style="padding:12px 4px">กด «ตรวจ» เพื่อรวมทุกใบ PK ของ counter นี้</div>';return;}
     var t=state.check.totals;
@@ -2997,8 +3024,15 @@ function pkOpenCounterCheck(seedCounter){
         var byBox=pkExportRowsToLines(exp);
         var merged=pkMergeOpenDraftIntoBundles(counter, byBox);
         state.includedOpen=merged.includedOpen;
+        if(pkCatalogCoreStale()||!CatalogCore.packingCounterCheck){
+          state.loading=false; state.check=null; state.err="STALE"; paintResult(); return;
+        }
         var check=packingCounterCheckFn(soh.map, merged.bundles);
-        if(!check) throw new Error("คำนวณไม่ได้");
+        if(!check){
+          state.loading=false; state.check=null;
+          state.err=pkCatalogCoreStale()?"STALE":"คำนวณไม่ได้";
+          paintResult(); return;
+        }
         var pkNos={};
         merged.bundles.forEach(function(b){
           if(b.boxNo&&b.boxNo!=="(เปิดอยู่)"&&b.boxNo!=="__open__") pkNos[b.boxNo]=1;
@@ -3013,6 +3047,7 @@ function pkOpenCounterCheck(seedCounter){
     }).catch(function(err){
       state.loading=false;
       state.check=null;
+      if(pkCatalogCoreStale()){ state.err="STALE"; paintResult(); return; }
       var msg=String((err&&err.message)||err||"โหลดไม่สำเร็จ");
       if(/timeout|Failed to fetch|NetworkError|jsonp|offline|http /i.test(msg))
         msg="ออฟไลน์หรือโหลดไม่สำเร็จ — ตรวจเน็ตแล้วกด ⟳ ใหม่";
@@ -5511,5 +5546,28 @@ window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW
 window.__pc={lookup:lookup,showHits:showHits,candidates:candidates,findExact:findExact,buildIndex:buildIndex,CAT:function(){return CATALOG;},showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
 pkInit();
 loadCatalog();
+/* Drop stale cached catalog-core.mjs once per APP_VER (drafts stay in localStorage). */
+(function pkWatchCatalogCoreVersion(){
+  var tries=0;
+  function tick(){
+    if(!window.CatalogCore){
+      if(++tries<120) setTimeout(tick,40);
+      return;
+    }
+    if(!pkCatalogCoreStale()){
+      try{sessionStorage.removeItem("productInfo.coreReload."+APP_VER);}catch(e){}
+      return;
+    }
+    var key="productInfo.coreReload."+APP_VER;
+    var tried=""; try{tried=sessionStorage.getItem(key)||"";}catch(e){}
+    if(tried==="1") return;
+    try{sessionStorage.setItem(key,"1");}catch(e){}
+    try{pkPersist();}catch(e){}
+    var u=new URL(location.href);
+    u.searchParams.set("v", APP_VER);
+    location.replace(u.href);
+  }
+  setTimeout(tick,0);
+})();
 </script>
 </body></html>
