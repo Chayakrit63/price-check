@@ -334,6 +334,25 @@ export function typeBucketLabel(bucket) {
   return b || "Stock";
 }
 
+/**
+ * Info-tab "Back to list" state.
+ * Keep a list when opening a result from 2+ candidates (search multi, suggestions, recent).
+ */
+export function infoBackListDecision(hits, opts) {
+  opts = opts || {};
+  var list = (hits || []).filter(Boolean);
+  if (list.length > 1) {
+    return {
+      showBack: true,
+      action: "list",
+      hits: list,
+      q: opts.q != null ? String(opts.q) : "",
+      typeCat: opts.typeCat || "ALL",
+    };
+  }
+  return { showBack: false, action: "search", hits: null, q: "", typeCat: opts.typeCat || "ALL" };
+}
+
 export function filterRowsByType(rows, typeCat, bucketFn) {
   bucketFn = bucketFn || rowTypeBucket;
   if (!typeCat || typeCat === "ALL") return rows ? rows.slice() : [];
@@ -371,6 +390,7 @@ if (typeof window !== "undefined") {
     sortPickRowsInBoxFirst: sortPickRowsInBoxFirst,
     packingUndoResult: packingUndoResult,
     typeBucketLabel: typeBucketLabel,
+    infoBackListDecision: infoBackListDecision,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,

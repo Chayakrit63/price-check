@@ -18,6 +18,7 @@ import {
   sortPickRowsInBoxFirst,
   packingUndoResult,
   PK_BIG_QTY,
+  infoBackListDecision,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -149,6 +150,17 @@ test("sortPackingLinesForDisplay newest touched first", () => {
     sortPackingLinesForDisplay([{ k: "1" }, { k: "2" }, { k: "3" }]).map((l) => l.k),
     ["3", "2", "1"]
   );
+});
+
+test("infoBackListDecision", () => {
+  assert.equal(infoBackListDecision([{ sku: "A" }]).showBack, false);
+  assert.equal(infoBackListDecision([{ sku: "A" }]).action, "search");
+  var d = infoBackListDecision([{ sku: "A" }, { sku: "B" }], { q: "hacivat", typeCat: "TESTER" });
+  assert.equal(d.showBack, true);
+  assert.equal(d.action, "list");
+  assert.equal(d.q, "hacivat");
+  assert.equal(d.typeCat, "TESTER");
+  assert.equal(d.hits.length, 2);
 });
 
 test("packing big qty + type summary + undo + pick sort", () => {
