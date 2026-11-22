@@ -240,6 +240,26 @@ export function packingLookupAction(hitCount) {
   return "miss";
 }
 
+/**
+ * Display order for packing box lines: highest `touched` first; for equal/missing
+ * touched, later array index first (reverse saved order). Does not mutate input.
+ */
+export function sortPackingLinesForDisplay(lines) {
+  return (lines || [])
+    .map(function (l, i) {
+      return { l: l, i: i };
+    })
+    .sort(function (a, b) {
+      var ta = Number(a.l && a.l.touched) || 0;
+      var tb = Number(b.l && b.l.touched) || 0;
+      if (ta !== tb) return tb - ta;
+      return b.i - a.i;
+    })
+    .map(function (x) {
+      return x.l;
+    });
+}
+
 export function filterRowsByType(rows, typeCat, bucketFn) {
   bucketFn = bucketFn || rowTypeBucket;
   if (!typeCat || typeCat === "ALL") return rows ? rows.slice() : [];
@@ -269,6 +289,7 @@ if (typeof window !== "undefined") {
     counterNamesDeduped: counterNamesDeduped,
     stripPlaceListLabel: stripPlaceListLabel,
     packingLookupAction: packingLookupAction,
+    sortPackingLinesForDisplay: sortPackingLinesForDisplay,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,
