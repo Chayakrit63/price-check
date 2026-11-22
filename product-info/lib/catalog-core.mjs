@@ -653,6 +653,102 @@ export function formatSohPosBadge(sku, sohMap) {
 }
 
 /**
+ * Sticky last-scanned status (short).
+ * @returns {{ text: string, className: string } | null}
+ */
+export function formatPackingSohLastStatus(info) {
+  if (!info) return null;
+  if (info.status === "missing") {
+    return { text: "ไม่มีใน POS", className: "miss" };
+  }
+  if (info.status === "done") {
+    return { text: "✓ ครบ", className: "done" };
+  }
+  if (info.status === "over") {
+    return {
+      text: "แพ็ค " + info.packed + " / POS " + info.soh + " · เกิน " + info.over,
+      className: "over",
+    };
+  }
+  return {
+    text: "แพ็ค " + info.packed + " / POS " + info.soh + " · เหลือ " + info.left,
+    className: "ok",
+  };
+}
+
+/**
+ * Whole-list SOH summary for packing pullback.
+ * packedPcs counts only SKUs present in SOH (not missing-from-POS packed qty).
+ * doneSku = packed >= soh; overSku ⊆ done; leftoverSku = packed < soh.
+ * @returns {null | {
+ *   posPcs, packedPcs, sohSkuCount, doneSku, overSku, missingSku, leftoverSku, leftoverPcs
+ * }}
+ */
+export function packingSohSummary(lines, sohMap) {
+  if (!sohMap) return null;
+  var packed = packingSkuQtyMap(lines);
+  var posPcs = 0;
+  var packedPcs = 0;
+  var sohSkuCount = 0;
+  var doneSku = 0;
+  var overSku = 0;
+  var leftoverSku = 0;
+  var leftoverPcs = 0;
+  Object.keys(sohMap).forEach(function (sku) {
+    var soh = Number(sohMap[sku].qty) || 0;
+    if (soh <= 0) return;
+    sohSkuCount++;
+    posPcs += soh;
+    var p = packed[sku] || 0;
+    packedPcs += p;
+    if (p > soh) overSku++;
+    if (p >= soh) doneSku++;
+    else {
+      leftoverSku++;
+      leftoverPcs += soh - p;
+    }
+  });
+  var missingSku = 0;
+  Object.keys(packed).forEach(function (sku) {
+    if (!sohMap[sku]) missingSku++;
+  });
+  return {
+    posPcs: posPcs,
+    packedPcs: packedPcs,
+    sohSkuCount: sohSkuCount,
+    doneSku: doneSku,
+    overSku: overSku,
+    missingSku: missingSku,
+    leftoverSku: leftoverSku,
+    leftoverPcs: leftoverPcs,
+  };
+}
+
+/** Filter leftover list by query (sku / barcode / desc) and optional brand. */
+export function filterSohLeftover(rows, query, brand) {
+  var q = String(query || "")
+    .trim()
+    .toLowerCase();
+  var b = String(brand || "")
+    .trim()
+    .toLowerCase();
+  return (rows || []).filter(function (r) {
+    if (b && String(r.brand || "").toLowerCase() !== b) return false;
+    if (!q) return true;
+    var hay = (
+      String(r.sku || "") +
+      " " +
+      String(r.barcode || "") +
+      " " +
+      String(r.desc || "") +
+      " " +
+      String(r.brand || "")
+    ).toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+}
+
+/**
  * Check one SKU against SOH.
  * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
  */
@@ -777,5 +873,8 @@ if (typeof window !== "undefined") {
     formatPackingSohLine: formatPackingSohLine,
     packingSohLineInfo: packingSohLineInfo,
     formatSohPosBadge: formatSohPosBadge,
+    formatPackingSohLastStatus: formatPackingSohLastStatus,
+    packingSohSummary: packingSohSummary,
+    filterSohLeftover: filterSohLeftover,
   };
 }

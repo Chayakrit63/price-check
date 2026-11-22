@@ -290,6 +290,31 @@ body.typing .tabbar{display:none}
 .pk-soh-line.over{color:#a3161c}
 .pk-soh-line.miss{color:#9a5b00;white-space:normal}
 .sug-pos{display:inline-block;margin-left:6px;border-radius:8px;font-size:10.5px;padding:1px 7px;font-weight:500;vertical-align:middle;background:#f5ebe0;color:#6b5344;white-space:nowrap}
+.pk-soh-last{display:none;margin:8px 18px 0;padding:10px 12px;border-radius:14px;border:1px solid #e3cfae;background:#fffdf9;text-align:left;cursor:pointer;width:auto;font:inherit;color:inherit;box-sizing:border-box}
+.pk-soh-last.show{display:block}
+.pk-soh-last .t1{font:500 13.5px Prompt;color:#2a1a17;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-soh-last .t2{font:400 11.5px Prompt;color:#9a8670;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-soh-last .st{display:block;margin-top:4px;font:600 12.5px Prompt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-soh-last .st.ok{color:#9a8670}
+.pk-soh-last .st.done{color:#2e7d32}
+.pk-soh-last .st.over{color:#a3161c}
+.pk-soh-last .st.miss{color:#9a5b00}
+.pk-soh-sum{display:none;margin:0 0 10px;padding:10px 12px;border-radius:14px;border:1px solid #e3cfae;background:#faf4ea;font:400 12px Prompt;color:#5a3a30;line-height:1.45}
+.pk-soh-sum.show{display:block}
+.pk-soh-sum .row{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-soh-sum .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.pk-soh-sum button{border:1px solid #d8c29c;background:#fff;color:#8b0f14;border-radius:999px;padding:6px 10px;font:500 12px Prompt;cursor:pointer;line-height:1.2;white-space:nowrap}
+.pk-soh-sum button.on{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.pk-soh-sum button.warn{border-color:#e9b25b;color:#9a5b00}
+.pk-soh-sum button.warn.on{background:#9a5b00;color:#fff;border-color:#9a5b00}
+.pk-soh-sum button.err{border-color:#efc4c4;color:#a3161c}
+.pk-soh-sum button.err.on{background:#a3161c;color:#fff;border-color:#a3161c}
+.pk-soh-sum button.left{flex:1;min-width:140px;border-radius:12px}
+.soh-left-item{display:block;width:100%;text-align:left;border:1px solid #e3cfae;border-radius:12px;background:#fffdf9;padding:10px 12px;margin-bottom:8px;font:400 13px Prompt;color:#2a1a17;cursor:pointer}
+.soh-left-item .d{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.soh-left-item .m{font-size:11.5px;color:#9a8670;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.soh-left-item .l{font:600 12.5px Prompt;color:#9a5b00;margin-top:4px}
+.soh-left-brand{margin:10px 0 6px;font:500 12.5px Prompt;color:#8b0f14}
 .soh-preview{width:100%;border-collapse:collapse;font:400 12.5px Prompt;margin-top:8px}
 .soh-preview th,.soh-preview td{border-bottom:1px solid #f1e3cf;padding:6px 8px;text-align:left}
 .soh-preview th{color:#8b0f14;font-weight:500}
@@ -477,6 +502,7 @@ body.typing .tabbar{display:none}
     </div>
     <div class="sug hidden" id="sug" role="listbox"></div>
   </div>
+  <button type="button" class="pk-soh-last" id="pk-soh-last" aria-live="polite"></button>
   <div class="foot">
     <div class="cnt" id="cnt">กำลังโหลด… / Loading…</div>
     <button type="button" class="refresh" id="reload" disabled>⟳ อัปเดตข้อมูล</button>
@@ -515,6 +541,7 @@ body.typing .tabbar{display:none}
 
 <div class="pk-body hidden" id="pk-body">
   <div id="pk-boxtabs" class="pk-tabs"></div>
+  <div id="pk-soh-sum" class="pk-soh-sum" aria-live="polite"></div>
   <div class="pk-lh"><span id="b-lh">สินค้าในกล่อง · Items</span><span id="b-sum"></span></div>
   <div id="pk-lines"></div>
   <div class="pk-act">
@@ -2066,7 +2093,7 @@ var pkUndo=null, pkLastAddSku="", pkLastAddAt=0, pkSaveFail=false;
 var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
 var PK_PINNED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
 var PKSOHMAP="productInfo.posSoh.reportMap", PKSOHLOCAL="productInfo.posSoh.local";
-var PK_SOH={backendOk:null, list:[], cache:{}, local:{}, imp:null, loading:false};
+var PK_SOH={backendOk:null, list:[], cache:{}, local:{}, imp:null, loading:false, last:null, lineFilter:null};
 var QR_LIB="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
 var BC_LIB="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
 function parsePackScan(text){
@@ -2190,7 +2217,9 @@ function pkUndoLastAdd(){
     line.touched=u.prevTouched||0;
   }
   if(u.prevTouchSeq!=null) b.touchSeq=u.prevTouchSeq;
-  b.dirty=true; pkTouched=""; pkPersist(); pkRenderBox();
+  b.dirty=true; pkTouched=""; pkPersist();
+  if(u.sku) pkSetSohLast(u.sku, u.desc||"");
+  pkRenderBox();
   pkHideSnackbar();
   toast("ย้อนกลับแล้ว · Undone","ok");
 }
@@ -2513,6 +2542,183 @@ function pkSohLineHtml(b, sku){
   if(!info) return "";
   return '<span class="pk-soh-line '+esc(info.className)+'">'+esc(info.text)+"</span>";
 }
+function packingSohSummaryFn(lines, map){
+  if(window.CatalogCore&&CatalogCore.packingSohSummary) return CatalogCore.packingSohSummary(lines, map);
+  return null;
+}
+function formatPackingSohLastStatusFn(info){
+  if(window.CatalogCore&&CatalogCore.formatPackingSohLastStatus) return CatalogCore.formatPackingSohLastStatus(info);
+  return null;
+}
+function packingSohLeftoverFn(lines, map){
+  if(window.CatalogCore&&CatalogCore.packingSohLeftover) return CatalogCore.packingSohLeftover(lines, map);
+  return [];
+}
+function filterSohLeftoverFn(rows, q, brand){
+  if(window.CatalogCore&&CatalogCore.filterSohLeftover) return CatalogCore.filterSohLeftover(rows, q, brand);
+  return rows||[];
+}
+function pkSetSohLast(sku, desc){
+  sku=String(sku||"").trim(); if(!sku) return;
+  PK_SOH.last={sku:sku, desc:String(desc||""), k:"S:"+sku.toUpperCase()};
+  pkRenderSohLast();
+}
+function pkClearSohLast(){
+  PK_SOH.last=null;
+  var el=$("pk-soh-last"); if(el){el.classList.remove("show");el.innerHTML="";}
+}
+function pkRenderSohLast(){
+  var el=$("pk-soh-last"); if(!el) return;
+  if(!pkPackBoxActive()){el.classList.remove("show");return;}
+  var b=curBox();
+  var soh=pkSohForFrom(b&&b.from);
+  if(!soh||!soh.map||!PK_SOH.last||!PK_SOH.last.sku){el.classList.remove("show");return;}
+  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var sku=PK_SOH.last.sku;
+  var info=packingSohLineInfoFn(sku, packed[String(sku).toUpperCase()]||0, soh.map);
+  var st=formatPackingSohLastStatusFn(info); if(!st){el.classList.remove("show");return;}
+  var desc=PK_SOH.last.desc||(soh.map[String(sku).toUpperCase()]&&soh.map[String(sku).toUpperCase()].desc)||"";
+  el.innerHTML='<div class="t1">'+esc(pkShortDesc(desc||sku))+'</div><div class="t2">'+esc(sku)+'</div><span class="st '+esc(st.className)+'">'+esc(st.text)+"</span>";
+  el.classList.add("show");
+}
+function pkJumpToSohSku(sku){
+  var b=curBox(); if(!b||!sku) return;
+  var key="S:"+String(sku).toUpperCase();
+  var hit=null;
+  (packItemList(b)||[]).forEach(function(l){
+    if(String(l.sku||"").toUpperCase()===String(sku).toUpperCase()){
+      if(!hit||boxSeqOf(l)===activeBoxOf(b)) hit=l;
+    }
+  });
+  if(!hit){toast("ยังไม่มีในกล่อง · Not in boxes yet","warn");return;}
+  if(boxSeqOf(hit)!==activeBoxOf(b)){
+    b.activeBox=boxSeqOf(hit);
+    pkPersist();
+  }
+  pkTouched=hit.k||key;
+  pkRenderBox();
+  setTimeout(function(){
+    var want=hit.k||key;
+    var row=null, nodes=$("pk-lines")?$("pk-lines").querySelectorAll(".ln"):[];
+    for(var i=0;i<nodes.length;i++) if(nodes[i].getAttribute("data-k")===want){row=nodes[i];break;}
+    if(row){try{row.scrollIntoView({block:"center",behavior:"smooth"});}catch(e){try{row.scrollIntoView(true);}catch(e2){}}}
+  },60);
+}
+function pkSohLineMatchesFilter(b, sku, filter){
+  if(!filter) return true;
+  var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return true;
+  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var info=packingSohLineInfoFn(sku, packed[String(sku||"").toUpperCase()]||0, soh.map);
+  if(!info) return false;
+  return info.status===filter;
+}
+function pkSetSohFilter(filter){
+  PK_SOH.lineFilter=(PK_SOH.lineFilter===filter)?null:filter;
+  var b=curBox();
+  if(PK_SOH.lineFilter&&b){
+    var found=null;
+    (packItemList(b)||[]).forEach(function(l){
+      if(found||!l.sku) return;
+      if(pkSohLineMatchesFilter(b,l.sku,PK_SOH.lineFilter)) found=l;
+    });
+    if(found&&boxSeqOf(found)!==activeBoxOf(b)){b.activeBox=boxSeqOf(found);pkPersist();}
+    if(found) pkTouched=found.k;
+  }
+  pkRenderBox();
+}
+function pkRenderSohSummary(){
+  var el=$("pk-soh-sum"); if(!el) return;
+  if(!pkPackBoxActive()){el.classList.remove("show");el.innerHTML="";return;}
+  var b=curBox();
+  var soh=pkSohForFrom(b&&b.from);
+  if(!soh||!soh.map){el.classList.remove("show");el.innerHTML="";return;}
+  var sum=packingSohSummaryFn(packItemList(b)||[], soh.map); if(!sum){el.classList.remove("show");return;}
+  var f=PK_SOH.lineFilter;
+  el.innerHTML='<div class="row">POS '+sum.posPcs+' ชิ้น · แพ็คแล้ว '+sum.packedPcs+' · ครบ '+sum.doneSku+'/'+sum.sohSkuCount+' SKU · เกิน '+sum.overSku+' SKU · ไม่มีใน POS '+sum.missingSku+'</div>'+
+    '<div class="acts">'+
+      '<button type="button" class="err'+(f==="over"?" on":"")+'" data-f="over" '+(sum.overSku?"":"disabled")+'>เกิน '+sum.overSku+'</button>'+
+      '<button type="button" class="warn'+(f==="missing"?" on":"")+'" data-f="missing" '+(sum.missingSku?"":"disabled")+'>ไม่มีใน POS '+sum.missingSku+'</button>'+
+      '<button type="button" class="left" data-a="leftover">ยังไม่แพ็ค ('+sum.leftoverSku+')</button>'+
+      (f?'<button type="button" data-f="">แสดงทั้งหมด</button>':'')+
+    '</div>';
+  el.classList.add("show");
+  el.onclick=function(ev){
+    var btn=ev.target.closest("button"); if(!btn||!el.contains(btn)) return;
+    if(btn.getAttribute("data-a")==="leftover"){ pkOpenSohLeftoverSheet(); return; }
+    if(btn.hasAttribute("data-f")) pkSetSohFilter(btn.getAttribute("data-f")||null);
+  };
+}
+function pkSohBrandOf(sku, desc){
+  var hits=sku?lookup(sku):null;
+  if(hits&&hits.length){
+    var r=hits.filter(function(x){return String(x.sku).toUpperCase()===String(sku).toUpperCase();})[0]||hits[0];
+    if(r&&r.brand) return String(r.brand);
+  }
+  var d=String(desc||"").trim();
+  if(!d) return "";
+  return d.split(/\s+/)[0]||"";
+}
+function pkOpenSohLeftoverSheet(){
+  var b=curBox(); if(!b) return;
+  var soh=pkSohForFrom(b.from); if(!soh||!soh.map) return;
+  var rows=packingSohLeftoverFn(packItemList(b)||[], soh.map).map(function(r){
+    return Object.assign({}, r, {brand:pkSohBrandOf(r.sku, r.desc)});
+  });
+  var state={q:"", brand:"", group:true};
+  var body=openSheet("ยังไม่แพ็ค · Remaining", (soh.asOf?("SOH ณ "+soh.asOf+" · "):"")+rows.length+" SKU");
+  function paint(){
+    var filtered=filterSohLeftoverFn(rows, state.q, state.brand);
+    var brands={};
+    rows.forEach(function(r){var br=r.brand||"—"; brands[br]=(brands[br]||0)+1;});
+    var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
+    var html='<label class="fl" style="margin:0 0 8px"><span>ค้นหา · Search</span><input id="soh-left-q" value="'+esc(state.q)+'" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
+    if(brandKeys.length>1){
+      html+='<div class="sc-chips" style="margin:0 0 10px" id="soh-left-brands">'+
+        '<button type="button" data-b="" class="'+(state.brand?"":"on")+'">ทั้งหมด</button>'+
+        brandKeys.slice(0,12).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("")+
+        '</div>';
+    }
+    if(!filtered.length){
+      html+='<div class="pk-empty" style="padding:18px 4px">'+(rows.length?'ไม่พบในตัวกรอง':'✓ pullback ครบตาม POS')+'</div>';
+    }else if(state.group&&brandKeys.length>1&&!state.brand){
+      var by={};
+      filtered.forEach(function(r){var br=r.brand||"—"; if(!by[br]) by[br]=[]; by[br].push(r);});
+      Object.keys(by).sort(function(a,c){return by[c].length-by[a].length||a.localeCompare(c);}).forEach(function(br){
+        html+='<div class="soh-left-brand">'+esc(br)+' · '+by[br].length+'</div>';
+        by[br].forEach(function(r){
+          html+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
+        });
+      });
+    }else{
+      filtered.forEach(function(r){
+        html+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+(r.brand?" · "+esc(r.brand):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
+      });
+    }
+    body.innerHTML=html;
+    var qel=$("soh-left-q");
+    if(qel){
+      qel.oninput=function(){state.q=qel.value; clearTimeout(paint.t); paint.t=setTimeout(paint,180);};
+      qel.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();state.q=qel.value;paint();}};
+    }
+    var chips=$("soh-left-brands");
+    if(chips) chips.onclick=function(ev){var btn=ev.target.closest("button[data-b]"); if(!btn)return; state.brand=btn.getAttribute("data-b")||""; paint();};
+    body.onclick=function(ev){
+      var btn=ev.target.closest(".soh-left-item"); if(!btn||!body.contains(btn)) return;
+      var sku=btn.getAttribute("data-sku")||"";
+      closeSheet(false);
+      $("q").value=sku;
+      try{$("q").focus();}catch(e){}
+      hideSug();
+      runSuggest();
+    };
+  }
+  paint();
+}
+function pkRenderSohUi(){
+  pkRenderSohChip(pkSohForFrom(curBox()&&curBox().from));
+  pkRenderSohLast();
+  pkRenderSohSummary();
+}
 function fillSohCtrList(){
   var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):counterNamesDedupedFallback(pkCounters||[]);
   var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames?CatalogCore.mergePinnedPlaceNames:function(p,r){return (p||[]).concat(r||[]);};
@@ -2554,10 +2760,10 @@ function pkSohStoreLocal(counter, parsed){
   pkSohPutCache(counter, PK_SOH.local[counter.toLowerCase()]);
 }
 function pkEnsureSohForBox(b){
-  if(!b||!b.from){ pkRenderSohChip(null); return; }
+  if(!b||!b.from){ pkRenderSohChip(null); pkRenderSohLast(); pkRenderSohSummary(); return; }
   var existing=pkSohForFrom(b.from);
-  if(existing){ pkRenderSohChip(existing); return; }
-  pkFetchSoh(b.from).then(function(e){ pkRenderSohChip(e); pkRenderLines(); }).catch(function(){ pkRenderSohChip(null); });
+  if(existing){ pkRenderSohUi(); return; }
+  pkFetchSoh(b.from).then(function(){ pkRenderSohUi(); pkRenderLines(); }).catch(function(){ pkRenderSohChip(null); pkRenderSohLast(); pkRenderSohSummary(); });
 }
 function pkFetchSoh(counter){
   counter=String(counter||"").trim();
@@ -2832,6 +3038,7 @@ function pkShow(v){
     show($("scan"),false);
     stopCam();
     pkUpdateBoxBanner();
+    if(v!=="box"){ pkClearSohLast(); var sumEl=$("pk-soh-sum"); if(sumEl){sumEl.classList.remove("show");sumEl.innerHTML="";} }
     show($("pk-"+(v==="label"?"label":v)),true);
     if(v==="home"){pkRenderHome();pkRefreshList();}
     if(v==="soh"){pkSohShow();}
@@ -3050,7 +3257,7 @@ function pkReserve(b){
 }
 
 /* ---------- open box (packing) ---------- */
-function pkRenderBox(){pkRenderHead();pkRenderBoxTabs();pkRenderLines();pkUpdateBoxBanner();}
+function pkRenderBox(){pkRenderHead();pkRenderBoxTabs();pkRenderSohUi();pkRenderLines();pkUpdateBoxBanner();}
 function pkRenderHead(){
   var b=curBox(); if(!b) return;
   var no=$("h-no");
@@ -3131,7 +3338,16 @@ function pkRenderLines(){
   if(!b) return;
   var k=activeBoxOf(b), n=boxCountOf(b);
   var vis=sortPackingLinesForDisplay(linesOfBox(b,k));
-  if(!vis.length){box.innerHTML='<div class="pk-empty">สแกนบาร์โค้ด / QR หรือพิมพ์ค้นหา เพื่อใส่สินค้าในกล่อง '+k+' / '+n+'<br>Scan or search to add items to this box</div>';return;}
+  if(PK_SOH.lineFilter){
+    vis=vis.filter(function(l){return l.sku&&pkSohLineMatchesFilter(b,l.sku,PK_SOH.lineFilter);});
+  }
+  if(!vis.length){
+    box.innerHTML=PK_SOH.lineFilter
+      ?('<div class="pk-empty">ไม่มีรายการในตัวกรองนี้ · No lines for this filter<br><button type="button" class="btn2" id="pk-soh-clear-f" style="margin-top:10px;width:auto">แสดงทั้งหมด</button></div>')
+      :('<div class="pk-empty">สแกนบาร์โค้ด / QR หรือพิมพ์ค้นหา เพื่อใส่สินค้าในกล่อง '+k+' / '+n+'<br>Scan or search to add items to this box</div>');
+    var clr=$("pk-soh-clear-f"); if(clr) clr.onclick=function(){pkSetSohFilter(null);};
+    return;
+  }
   for(var i=0;i<vis.length;i++){
     var l=vis[i];
     var el=document.createElement("div");
@@ -3192,7 +3408,12 @@ function pkLineEvent(ev){
     if(to) pkMoveLine(l,to);
     return;
   }else return;
-  b.dirty=true; pkTouched=""; pkPersist(); pkRenderBox();
+  b.dirty=true; pkTouched=""; pkPersist();
+  if(l&&l.sku) pkSetSohLast(l.sku, l.desc||"");
+  else if(PK_SOH.last&&PK_SOH.last.sku&&!(packItemList(b)||[]).some(function(x){return String(x.sku||"").toUpperCase()===String(PK_SOH.last.sku).toUpperCase();})){
+    /* keep last SKU bar even if line deleted so status can flip to remaining */
+  }
+  pkRenderBox();
 }
 function matchedEan(row,scanned){
   var cs=candidates(scanned||"").map(function(c){return norm(c).toUpperCase();});
@@ -3235,7 +3456,9 @@ function pkAdd(row,scanned,qty,opts){
   var camDup=!opts.typed&&!opts.fromPick&&pkLastAddSku===k&&(now-pkLastAddAt)<4000;
   pkLastAddSku=k; pkLastAddAt=now;
   pkUndo={boxId:b.id,lineKey:k,boxSeq:boxSeqOf(l),addedQty:qty,created:created,prevTouched:prevTouched,prevTouchSeq:prevTouchSeq,desc:l.desc,sku:l.sku};
-  b.dirty=true; pkTouched=k; pkPersist(); pkRenderBox();
+  b.dirty=true; pkTouched=k; pkPersist();
+  pkSetSohLast(row.sku, l.desc||row.desc||"");
+  pkRenderBox();
   pkAfterAddFeedback(b,l,qty,{dup:camDup});
   pkAfterSohWarn(b, row.sku);
   logScan(scanned||row.sku,row.sku);
@@ -4920,6 +5143,7 @@ function pkInit(){
   if($("soh-upload")) $("soh-upload").onclick=function(){pkSohUpload(false);};
   if($("soh-local-only")) $("soh-local-only").onclick=function(){pkSohUpload(true);};
   if($("h-soh-local")) $("h-soh-local").onclick=function(){pkSohLoadOnDeviceForBox();};
+  if($("pk-soh-last")) $("pk-soh-last").onclick=function(){ if(PK_SOH.last&&PK_SOH.last.sku) pkJumpToSohSku(PK_SOH.last.sku); };
   pkSohLoadLocalStore();
   $("pk-reload").onclick=function(){pkRefreshList($("pk-q").value.trim());};
   $("pk-q").addEventListener("input",function(){pkRenderList();clearTimeout(pkInit.qt);pkInit.qt=setTimeout(function(){pkRefreshList($("pk-q").value.trim());},600);});

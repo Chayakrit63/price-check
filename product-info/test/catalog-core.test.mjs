@@ -32,6 +32,9 @@ import {
   formatPackingSohLine,
   packingSohLineInfo,
   formatSohPosBadge,
+  formatPackingSohLastStatus,
+  packingSohSummary,
+  filterSohLeftover,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -317,4 +320,44 @@ test("formatPackingSohLine remaining / done / over", () => {
   assert.equal(formatSohPosBadge("A", soh), "POS 57");
   assert.equal(formatSohPosBadge("MISS", soh), "");
   assert.equal(formatSohPosBadge("A", null), "");
+
+  assert.equal(formatPackingSohLastStatus(mid).text, "แพ็ค 1 / POS 57 · เหลือ 56");
+  assert.equal(formatPackingSohLastStatus(done).text, "✓ ครบ");
+  assert.equal(formatPackingSohLastStatus(over).text, "แพ็ค 5 / POS 3 · เกิน 2");
+  assert.equal(formatPackingSohLastStatus({ status: "missing" }).text, "ไม่มีใน POS");
+});
+
+test("packingSohSummary counts + leftover filter", () => {
+  var soh = sohMapFromRows([
+    { sku: "A", qty: 10, desc: "Alpha", barcode: "111" },
+    { sku: "B", qty: 5, desc: "Beta", barcode: "222" },
+    { sku: "C", qty: 20, desc: "Gamma", barcode: "333" },
+  ]);
+  // A exact done, B over, C leftover, MISS not in POS
+  var lines = [
+    { sku: "A", qty: 10 },
+    { sku: "B", qty: 7 },
+    { sku: "C", qty: 3 },
+    { sku: "MISS", qty: 2 },
+  ];
+  var sum = packingSohSummary(lines, soh);
+  assert.equal(sum.posPcs, 35);
+  assert.equal(sum.packedPcs, 20); // A10+B7+C3 — MISS excluded
+  assert.equal(sum.sohSkuCount, 3);
+  assert.equal(sum.doneSku, 2); // A + B (packed >= soh)
+  assert.equal(sum.overSku, 1); // B
+  assert.equal(sum.leftoverSku, 1); // C
+  assert.equal(sum.leftoverPcs, 17);
+  assert.equal(sum.missingSku, 1);
+  assert.equal(packingSohSummary(lines, null), null);
+
+  var left = packingSohLeftover(lines, soh).map(function (r) {
+    return Object.assign({ brand: r.sku === "C" ? "NISHANE" : "OTHER" }, r);
+  });
+  assert.equal(left.length, 1);
+  assert.equal(left[0].left, 17);
+  assert.equal(filterSohLeftover(left, "gam", "").length, 1);
+  assert.equal(filterSohLeftover(left, "zzz", "").length, 0);
+  assert.equal(filterSohLeftover(left, "", "nishane").length, 1);
+  assert.equal(filterSohLeftover(left, "", "other").length, 0);
 });
