@@ -9,6 +9,12 @@
  *   - out_(obj)                  → ContentService JSON (and JSONP if callback present)
  *   - SpreadsheetApp.getActive()
  *
+ * IMPORTANT — Sheet.getRange(row, column, numRows, numColumns):
+ *   The 3rd/4th args are COUNTS, not end-row/end-col A1 indices.
+ *   Reading from row 2 through lastRow: getRange(2, 1, last - 1, nCols)
+ *   Writing N rows at row 2:            getRange(2, 1, N, nCols)
+ *   Appending N rows at `start`:        getRange(start, 1, N, nCols)
+ *
  * ========== Paste into doGet (alongside other api= branches) ==========
  *
  *   if (api === 'possoh') {
@@ -80,16 +86,17 @@ function replacePosSoh(body) {
     var last = sh.getLastRow();
     var nCols = POS_SOH_HEADERS.length;
     if (last > 1) {
-      var vals = sh.getRange(2, 1, last, nCols).getValues();
+      // numRows = last - 1 (data rows 2..last)
+      var vals = sh.getRange(2, 1, last - 1, nCols).getValues();
       var keep = [];
       for (var i = 0; i < vals.length; i++) {
         if (String(vals[i][0] || '').trim().toLowerCase() !== counter.toLowerCase()) {
           keep.push(vals[i]);
         }
       }
-      sh.getRange(2, 1, last, nCols).clearContent();
+      sh.getRange(2, 1, last - 1, nCols).clearContent();
       if (keep.length) {
-        sh.getRange(2, 1, 1 + keep.length, nCols).setValues(keep);
+        sh.getRange(2, 1, keep.length, nCols).setValues(keep);
       }
     }
     var out = [];
@@ -114,9 +121,9 @@ function replacePosSoh(body) {
     }
     if (out.length) {
       var start = sh.getLastRow() + 1;
-      sh.getRange(start, 1, start + out.length - 1, nCols).setValues(out);
-      sh.getRange(start, 2, start + out.length - 1, 2).setNumberFormat('@');
-      sh.getRange(start, 3, start + out.length - 1, 3).setNumberFormat('@');
+      sh.getRange(start, 1, out.length, nCols).setValues(out);
+      sh.getRange(start, 2, out.length, 1).setNumberFormat('@');
+      sh.getRange(start, 3, out.length, 1).setNumberFormat('@');
     }
     return {
       ok: true,
@@ -140,7 +147,7 @@ function getPosSoh(counter) {
   var sh = posSohSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { ok: true, counter: counter, asOf: '', rows: [], skuCount: 0, pcs: 0 };
-  var vals = sh.getRange(2, 1, last, POS_SOH_HEADERS.length).getDisplayValues();
+  var vals = sh.getRange(2, 1, last - 1, POS_SOH_HEADERS.length).getDisplayValues();
   var rows = [];
   var asOf = '';
   var pcs = 0;
@@ -174,7 +181,7 @@ function listPosSoh() {
   var sh = posSohSheet_();
   var last = sh.getLastRow();
   if (last < 2) return { ok: true, counters: [] };
-  var vals = sh.getRange(2, 1, last, POS_SOH_HEADERS.length).getDisplayValues();
+  var vals = sh.getRange(2, 1, last - 1, POS_SOH_HEADERS.length).getDisplayValues();
   var by = {};
   for (var i = 0; i < vals.length; i++) {
     var name = String(vals[i][0] || '').trim();
@@ -216,7 +223,7 @@ function deletePosSoh(counter) {
     var last = sh.getLastRow();
     var nCols = POS_SOH_HEADERS.length;
     if (last < 2) return { ok: true, counter: counter, deleted: 0 };
-    var vals = sh.getRange(2, 1, last, nCols).getValues();
+    var vals = sh.getRange(2, 1, last - 1, nCols).getValues();
     var keep = [];
     var deleted = 0;
     var key = counter.toLowerCase();
@@ -227,9 +234,9 @@ function deletePosSoh(counter) {
         keep.push(vals[i]);
       }
     }
-    sh.getRange(2, 1, last, nCols).clearContent();
+    sh.getRange(2, 1, last - 1, nCols).clearContent();
     if (keep.length) {
-      sh.getRange(2, 1, 1 + keep.length, nCols).setValues(keep);
+      sh.getRange(2, 1, keep.length, nCols).setValues(keep);
     }
     return { ok: true, counter: counter, deleted: deleted };
   } finally {
