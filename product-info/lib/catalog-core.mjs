@@ -1,6 +1,8 @@
 /**
  * Shared catalog classifier + search (Node tests + browser via window.CatalogCore).
+ * Bump VERSION in lockstep with APP_VER in index.html (cache-bust query on the module URL).
  */
+export var VERSION = "20261122d";
 
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
@@ -996,6 +998,7 @@ export function formatSohChip(asOf, skuCount) {
 
 if (typeof window !== "undefined") {
   window.CatalogCore = {
+    VERSION: VERSION,
     itemTypeBucket: itemTypeBucket,
     rowTypeBucket: rowTypeBucket,
     parseSearchQty: parseSearchQty,
