@@ -12,6 +12,12 @@ import {
   stripPlaceListLabel,
   packingLookupAction,
   sortPackingLinesForDisplay,
+  packingIsBigQty,
+  packingTypeSummary,
+  packingBigQtyLines,
+  sortPickRowsInBoxFirst,
+  packingUndoResult,
+  PK_BIG_QTY,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -142,5 +148,33 @@ test("sortPackingLinesForDisplay newest touched first", () => {
   assert.deepEqual(
     sortPackingLinesForDisplay([{ k: "1" }, { k: "2" }, { k: "3" }]).map((l) => l.k),
     ["3", "2", "1"]
+  );
+});
+
+test("packing big qty + type summary + undo + pick sort", () => {
+  assert.equal(PK_BIG_QTY, 20);
+  assert.equal(packingIsBigQty(20), false);
+  assert.equal(packingIsBigQty(21), true);
+  var lines = [
+    { sku: "A", qty: 2, group: "STOCK" },
+    { sku: "T-A", qty: 1, group: "TESTER" },
+    { sku: "G1", qty: 25, group: "GWP" },
+  ];
+  var sum = packingTypeSummary(lines, rowTypeBucket);
+  assert.equal(sum.totalLines, 3);
+  assert.equal(sum.totalQty, 28);
+  assert.equal(sum.STOCK.qty, 2);
+  assert.equal(sum.TESTER.qty, 1);
+  assert.equal(sum.GWPS.qty, 25);
+  assert.equal(packingBigQtyLines(lines).length, 1);
+  assert.deepEqual(packingUndoResult(5, 2, false), { remove: false, nextQty: 3 });
+  assert.deepEqual(packingUndoResult(2, 2, true), { remove: true, nextQty: 0 });
+  var pick = sortPickRowsInBoxFirst(
+    [{ sku: "X" }, { sku: "Y" }, { sku: "Z" }],
+    { Y: 1 }
+  );
+  assert.deepEqual(
+    pick.map((r) => r.sku),
+    ["Y", "X", "Z"]
   );
 });
