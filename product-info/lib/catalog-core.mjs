@@ -574,34 +574,108 @@ export function sohMapFromRows(rows) {
 }
 
 /**
- * Check one SKU against SOH.
- * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
+ * Inline POS line math for packing list rows.
+ * packed = cumulative qty for SKU across ALL boxes of this PK.
+ * @returns {{ status: 'ok'|'done'|'over', soh: number, packed: number, left: number, over: number, text: string, className: string }}
  */
-export function packingSohCheck(sku, packedQty, sohMap) {
+export function formatPackingSohLine(sohQty, packedQty) {
+  var soh = Math.max(0, Number(sohQty) || 0);
+  var packed = Math.max(0, Number(packedQty) || 0);
+  if (packed > soh) {
+    var over = packed - soh;
+    return {
+      status: "over",
+      soh: soh,
+      packed: packed,
+      left: 0,
+      over: over,
+      text: "POS " + soh + " · แพ็คแล้ว " + packed + " · เกิน " + over,
+      className: "over",
+    };
+  }
+  var left = soh - packed;
+  if (left === 0) {
+    return {
+      status: "done",
+      soh: soh,
+      packed: packed,
+      left: 0,
+      over: 0,
+      text: "✓ POS " + soh + " · แพ็คแล้ว " + packed + " · เหลือ 0",
+      className: "done",
+    };
+  }
+  return {
+    status: "ok",
+    soh: soh,
+    packed: packed,
+    left: left,
+    over: 0,
+    text: "POS " + soh + " · แพ็คแล้ว " + packed + " · เหลือ " + left,
+    className: "ok",
+  };
+}
+
+/**
+ * Full line info when SOH map is loaded (null if no map / blank sku).
+ * missing → yellow warning text; otherwise formatPackingSohLine.
+ */
+export function packingSohLineInfo(sku, packedQty, sohMap) {
+  if (!sohMap) return null;
   var k = String(sku || "")
     .trim()
     .toUpperCase();
-  var packed = Number(packedQty) || 0;
-  if (!sohMap || !k) return { status: "ok", packed: packed, soh: 0 };
+  if (!k) return null;
   var rec = sohMap[k];
   if (!rec) {
     return {
       status: "missing",
-      packed: packed,
       soh: 0,
+      packed: Math.max(0, Number(packedQty) || 0),
+      left: 0,
+      over: 0,
+      text: "⚠ ไม่มีใน POS ของ counter นี้",
+      className: "miss",
       warn: "ไม่มีใน POS ของ counter นี้",
     };
   }
-  var soh = Number(rec.qty) || 0;
-  if (packed > soh) {
+  return formatPackingSohLine(rec.qty, packedQty);
+}
+
+/** Short badge for picker/suggestions: "POS 57" or "" if unknown/no SOH. */
+export function formatSohPosBadge(sku, sohMap) {
+  if (!sohMap) return "";
+  var k = String(sku || "")
+    .trim()
+    .toUpperCase();
+  if (!k || !sohMap[k]) return "";
+  return "POS " + (Number(sohMap[k].qty) || 0);
+}
+
+/**
+ * Check one SKU against SOH.
+ * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
+ */
+export function packingSohCheck(sku, packedQty, sohMap) {
+  var info = packingSohLineInfo(sku, packedQty, sohMap);
+  if (!info) return { status: "ok", packed: Number(packedQty) || 0, soh: 0 };
+  if (info.status === "missing") {
     return {
-      status: "over",
-      packed: packed,
-      soh: soh,
-      warn: "แพ็ค " + packed + " / POS มี " + soh,
+      status: "missing",
+      packed: info.packed,
+      soh: 0,
+      warn: info.warn || "ไม่มีใน POS ของ counter นี้",
     };
   }
-  return { status: "ok", packed: packed, soh: soh };
+  if (info.status === "over") {
+    return {
+      status: "over",
+      packed: info.packed,
+      soh: info.soh,
+      warn: "แพ็ค " + info.packed + " / POS มี " + info.soh,
+    };
+  }
+  return { status: "ok", packed: info.packed, soh: info.soh };
 }
 
 /** Mismatches for a packing list vs SOH (missing + over). */
@@ -700,5 +774,8 @@ if (typeof window !== "undefined") {
     packingSohMismatches: packingSohMismatches,
     packingSohLeftover: packingSohLeftover,
     formatSohChip: formatSohChip,
+    formatPackingSohLine: formatPackingSohLine,
+    packingSohLineInfo: packingSohLineInfo,
+    formatSohPosBadge: formatSohPosBadge,
   };
 }

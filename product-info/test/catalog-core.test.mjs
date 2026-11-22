@@ -29,6 +29,9 @@ import {
   packingSohMismatches,
   packingSohLeftover,
   formatSohChip,
+  formatPackingSohLine,
+  packingSohLineInfo,
+  formatSohPosBadge,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -274,4 +277,44 @@ test("packing SOH mismatch + cumulative qty across boxes", () => {
   assert.equal(left.length, 1);
   assert.equal(left[0].sku, "C");
   assert.equal(left[0].left, 4);
+});
+
+test("formatPackingSohLine remaining / done / over", () => {
+  var mid = formatPackingSohLine(57, 1);
+  assert.equal(mid.status, "ok");
+  assert.equal(mid.left, 56);
+  assert.equal(mid.over, 0);
+  assert.equal(mid.text, "POS 57 · แพ็คแล้ว 1 · เหลือ 56");
+  assert.equal(mid.className, "ok");
+
+  var done = formatPackingSohLine(3, 3);
+  assert.equal(done.status, "done");
+  assert.equal(done.left, 0);
+  assert.equal(done.text, "✓ POS 3 · แพ็คแล้ว 3 · เหลือ 0");
+  assert.equal(done.className, "done");
+
+  var over = formatPackingSohLine(3, 5);
+  assert.equal(over.status, "over");
+  assert.equal(over.over, 2);
+  assert.equal(over.left, 0);
+  assert.equal(over.text, "POS 3 · แพ็คแล้ว 5 · เกิน 2");
+  assert.equal(over.className, "over");
+
+  var zeroPacked = formatPackingSohLine(10, 0);
+  assert.equal(zeroPacked.status, "ok");
+  assert.equal(zeroPacked.left, 10);
+  assert.equal(zeroPacked.text, "POS 10 · แพ็คแล้ว 0 · เหลือ 10");
+
+  var soh = sohMapFromRows([
+    { sku: "A", qty: 57 },
+    { sku: "B", qty: 3 },
+  ]);
+  assert.equal(packingSohLineInfo("A", 1, soh).text, "POS 57 · แพ็คแล้ว 1 · เหลือ 56");
+  assert.equal(packingSohLineInfo("B", 5, soh).status, "over");
+  assert.equal(packingSohLineInfo("MISS", 2, soh).status, "missing");
+  assert.equal(packingSohLineInfo("MISS", 2, soh).text, "⚠ ไม่มีใน POS ของ counter นี้");
+  assert.equal(packingSohLineInfo("A", 1, null), null);
+  assert.equal(formatSohPosBadge("A", soh), "POS 57");
+  assert.equal(formatSohPosBadge("MISS", soh), "");
+  assert.equal(formatSohPosBadge("A", null), "");
 });
