@@ -280,6 +280,19 @@ body.typing .tabbar{display:none}
 .pk-tab-del{color:#a3161c;border-color:#efc4c4}
 .pk-box-banner{margin:0 18px 8px;padding:8px 12px;border-radius:12px;background:#8b0f14;color:#fff;font:500 13.5px Prompt;display:none}
 .pk-box-banner.show{display:block}
+.pk-soh-chip{display:inline-block;border-radius:20px;padding:3px 10px;font-size:12px;background:#fdf0d5;color:#9a5b00;margin-left:6px;white-space:nowrap}
+.pk-soh-chip.hidden{display:none}
+.pk-soh-warn{display:block;margin-top:4px;font:500 12.5px Prompt;color:#9a5b00}
+.pk-soh-miss{color:#a3161c}
+.soh-preview{width:100%;border-collapse:collapse;font:400 12.5px Prompt;margin-top:8px}
+.soh-preview th,.soh-preview td{border-bottom:1px solid #f1e3cf;padding:6px 8px;text-align:left}
+.soh-preview th{color:#8b0f14;font-weight:500}
+.soh-card{border:1px solid #e3cfae;border-radius:14px;padding:12px;margin:8px 0;background:#fffdf9}
+.soh-card .meta{font:300 12.5px Prompt;color:#9a8670;margin-top:4px}
+.soh-note{font:300 13px Prompt;color:#9a5b00;background:#fdf0d5;border-radius:10px;padding:8px 10px;margin:8px 0}
+.pk-sum-soh{margin-top:12px;text-align:left}
+.pk-sum-soh .pk-sum-big{margin:4px 0;padding:6px 8px;background:#fff7e8;border-radius:8px;font:400 12.5px Prompt}
+.pk-sum-soh details{margin-top:8px;font:400 13px Prompt;color:#5a3a30}
 .pk-save-pill{display:inline-block;border-radius:20px;padding:3px 10px;font-size:12px;background:#eee;color:#666;white-space:nowrap}
 .pk-save-pill.ok{background:#e3f1e4;color:#2e7d32}
 .pk-save-pill.warn{background:#fdf0d5;color:#9a5b00}
@@ -406,7 +419,11 @@ body.typing .tabbar{display:none}
   </div>
   <div class="pk-ship" id="h-ship"></div>
   <div class="pk-sub" id="h-sub"></div>
-  <div class="pk-tot"><span class="chip" id="h-tot"></span><span class="pk-save-pill" id="h-save">ยังไม่บันทึก</span><span class="chip warn hidden" id="h-st"></span></div>
+  <div class="pk-tot"><span class="chip" id="h-tot"></span><span class="pk-soh-chip hidden" id="h-soh"></span><span class="pk-save-pill" id="h-save">ยังไม่บันทึก</span><span class="chip warn hidden" id="h-st"></span></div>
+  <div class="pk-act" style="margin:8px 0 0;gap:8px;flex-wrap:wrap">
+    <button type="button" class="btn2" id="h-soh-local" style="width:auto;flex:none;padding:7px 12px;font-size:12.5px;margin:0">โหลด SOH บนเครื่อง · Load SOH file</button>
+    <input type="file" id="h-soh-file" accept=".xls,.xlsx,.csv,.txt,text/csv,application/vnd.ms-excel" style="display:none">
+  </div>
 </div>
 
 <div id="scan">
@@ -502,6 +519,7 @@ body.typing .tabbar{display:none}
 
 <div class="pk hidden" id="pk-home">
   <button type="button" class="btn" id="pk-new">＋ เปิดใบแพ็คใหม่ · New packing list</button>
+  <button type="button" class="btn2" id="pk-soh-open" style="margin-top:8px">📥 Import SOH (POS) · นำเข้าสต็อกเคาน์เตอร์</button>
   <div id="pk-drafts"></div>
   <div class="pk-sec"><span>กล่องล่าสุด · Recent boxes</span><button type="button" id="pk-reload">⟳ รีเฟรช</button></div>
   <div class="in"><input id="pk-q" type="search" autocomplete="off" placeholder="ค้นหาเลขกล่อง / ปลายทาง / Ref" enterkeyhint="search"></div>
@@ -512,6 +530,26 @@ body.typing .tabbar{display:none}
   </div>
   <div id="pk-list"></div>
   <div class="pk-act"><button type="button" class="btn2" id="pk-csv-all">⬇ Export CSV ทุกกล่อง · All boxes</button></div>
+</div>
+
+<div class="pk hidden" id="pk-soh">
+  <h3>Import SOH · นำเข้า POS stock on hand</h3>
+  <p class="cnt" style="text-align:left;margin:-6px 2px 12px">ไฟล์ export จาก POS (xlsx / .xls HTML) · หนึ่งเคาน์เตอร์ต่อไฟล์ · ใช้ตอนแพ็คดึงกลับเพื่อเตือนถ้าจำนวนไม่ตรง SOH (ไม่บล็อกการบันทึก)</p>
+  <div id="soh-backend-note" class="soh-note hidden">SOH backend not deployed yet · ใช้โหมดบนเครื่องได้ (ไม่อัปโหลด)</div>
+  <input type="file" id="soh-file" accept=".xls,.xlsx,.csv,.txt,text/csv,application/vnd.ms-excel">
+  <div id="soh-imap" class="hidden" style="margin-top:12px">
+    <label class="fl"><span>เคาน์เตอร์ · Counter *</span><input id="soh-ctr" list="soh-ctr-list" autocomplete="off" maxlength="120" placeholder="เลือกหรือพิมพ์ชื่อเคาน์เตอร์"></label>
+    <datalist id="soh-ctr-list"></datalist>
+    <div id="soh-imp-info" class="meta" style="margin:8px 0;font-size:13px;color:#9a8670"></div>
+    <div style="overflow:auto"><table class="soh-preview" id="soh-prev"></table></div>
+    <div class="pk-act" style="margin-top:12px">
+      <button type="button" class="btn" id="soh-upload">Upload · อัปโหลด</button>
+      <button type="button" class="btn2" id="soh-local-only">ใช้บนเครื่องนี้เท่านั้น · Device only</button>
+    </div>
+  </div>
+  <div class="pk-sec" style="margin-top:22px"><span>เคาน์เตอร์ที่มี SOH · Counters with SOH</span><button type="button" id="soh-reload">⟳ รีเฟรช</button></div>
+  <div id="soh-list"></div>
+  <div class="pk-act"><button type="button" class="btn2" id="soh-back">← กลับ · Back</button></div>
 </div>
 
 <div class="pk hidden" id="pk-form">
@@ -2016,6 +2054,8 @@ var PK_BIG_QTY=(window.CatalogCore&&CatalogCore.PK_BIG_QTY)||20;
 var pkUndo=null, pkLastAddSku="", pkLastAddAt=0, pkSaveFail=false;
 var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
 var PK_PINNED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
+var PKSOHMAP="productInfo.posSoh.reportMap", PKSOHLOCAL="productInfo.posSoh.local";
+var PK_SOH={backendOk:null, list:[], cache:{}, local:{}, imp:null, loading:false};
 var QR_LIB="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
 var BC_LIB="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
 function parsePackScan(text){
@@ -2178,7 +2218,28 @@ function pkBuildSummaryHtml(b){
       h+='<div class="pk-sum-big"><div class="sku">'+esc(l.sku||l.ean||"—")+' × '+esc(l.qty)+'</div><div>'+esc(l.desc||"")+'</div></div>';
     });
   }else h+='<p class="cnt" style="text-align:left;margin-top:10px">ไม่มีรายการจำนวนมาก · No big qty lines</p>';
+  h+=pkBuildSohReviewHtml(b);
   return h;
+}
+function pkBuildSohReviewHtml(b){
+  var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return "";
+  var lines=packItemList(b)||[];
+  var mm=window.CatalogCore&&CatalogCore.packingSohMismatches?CatalogCore.packingSohMismatches(lines,soh.map):[];
+  var left=window.CatalogCore&&CatalogCore.packingSohLeftover?CatalogCore.packingSohLeftover(lines,soh.map):[];
+  var h='<div class="pk-sum-soh"><p class="sc-flab">SOH vs แพ็ค · '+(soh.asOf?("ณ "+esc(soh.asOf)):"")+'</p>';
+  if(!mm.length) h+='<p class="cnt" style="text-align:left;margin:4px 0">ไม่พบความต่างกับ POS · No SOH mismatches</p>';
+  else mm.forEach(function(m){
+    h+='<div class="pk-sum-big'+(m.status==="missing"?" pk-soh-miss":"")+'"><div class="sku">'+esc(m.sku)+" · "+esc(m.warn||"")+'</div><div>'+esc(m.desc||"")+'</div></div>';
+  });
+  if(left.length){
+    h+='<details><summary>ยังไม่ได้แพ็คจาก SOH · '+left.length+' SKU (เหลือ '+(left.reduce(function(n,x){return n+x.left;},0))+' ชิ้น)</summary>';
+    left.slice(0,80).forEach(function(x){
+      h+='<div class="pk-sum-big"><div class="sku">'+esc(x.sku)+" · แพ็ค "+x.packed+" / POS "+x.soh+" (เหลือ "+x.left+")</div><div>"+esc(x.desc||"")+"</div></div>";
+    });
+    if(left.length>80) h+='<p class="cnt" style="text-align:left">…อีก '+(left.length-80)+' รายการ</p>';
+    h+="</details>";
+  }
+  return h+"</div>";
 }
 function pkConfirmSummary(title, onOk, box){
   var b=box||curBox(); if(!b) return;
@@ -2367,8 +2428,322 @@ function stripPlaceListLabelFallback(s){
 }
 function loadCounters(){
   apiGet({api:"counters"}).then(function(res){
-    if(res&&res.ok&&res.counters&&res.counters.length){pkCounters=res.counters; fillPlaceLists();}
+    if(res&&res.ok&&res.counters&&res.counters.length){pkCounters=res.counters; fillPlaceLists(); fillSohCtrList();}
   }).catch(function(){});
+}
+
+/* ---------- POS SOH (packing pullback) ---------- */
+function pkSohLoadLocalStore(){
+  try{PK_SOH.local=JSON.parse(localStorage.getItem(PKSOHLOCAL)||"{}")||{};}catch(e){PK_SOH.local={};}
+}
+function pkSohSaveLocalStore(){
+  try{localStorage.setItem(PKSOHLOCAL,JSON.stringify(PK_SOH.local||{}));}catch(e){}
+}
+function pkSohReportMap(){
+  try{return JSON.parse(localStorage.getItem(PKSOHMAP)||"{}")||{};}catch(e){return {};}
+}
+function pkSohRememberMap(reportName, counter){
+  reportName=String(reportName||"").trim(); counter=String(counter||"").trim();
+  if(!reportName||!counter) return;
+  var m=pkSohReportMap(); m[reportName]=counter;
+  try{localStorage.setItem(PKSOHMAP,JSON.stringify(m));}catch(e){}
+}
+function pkSohIsUnknownApi(res){
+  if(!res) return true;
+  var err=String(res.error||res.message||res.err||"").toLowerCase();
+  if(/unknown\s*(api|action)|not\s*found|invalid\s*api|unsupported/.test(err)) return true;
+  if(res.ok===false&&!err&&res.api==null&&!res.counter&&!res.counters) return true;
+  return false;
+}
+function sohMapFromRowsFn(rows){
+  if(window.CatalogCore&&CatalogCore.sohMapFromRows) return CatalogCore.sohMapFromRows(rows);
+  var map={};
+  (rows||[]).forEach(function(r){
+    var sku=String((r&&r.sku)||"").trim().toUpperCase(); if(!sku) return;
+    var q=Number(r.qty)||0; if(q===0) return;
+    if(!map[sku]) map[sku]={qty:0,barcode:r.barcode||"",desc:r.desc||""};
+    map[sku].qty+=q;
+  });
+  return map;
+}
+function parsePosInventoryAoaFn(aoa, fileName){
+  if(window.CatalogCore&&CatalogCore.parsePosInventoryAoa) return CatalogCore.parsePosInventoryAoa(aoa, fileName);
+  return {ok:false,error:"CatalogCore missing",rows:[]};
+}
+function formatSohChipFn(asOf, skuCount){
+  if(window.CatalogCore&&CatalogCore.formatSohChip) return CatalogCore.formatSohChip(asOf, skuCount);
+  return "SOH ณ "+(asOf||"—")+" · "+(skuCount||0)+" SKU";
+}
+function packingSohCheckFn(sku, packed, map){
+  if(window.CatalogCore&&CatalogCore.packingSohCheck) return CatalogCore.packingSohCheck(sku, packed, map);
+  return {status:"ok",packed:packed,soh:0};
+}
+function packingSkuQtyMapFn(lines){
+  if(window.CatalogCore&&CatalogCore.packingSkuQtyMap) return CatalogCore.packingSkuQtyMap(lines);
+  var m={}; (lines||[]).forEach(function(l){var s=String(l.sku||"").toUpperCase(); if(!s)return; m[s]=(m[s]||0)+(Number(l.qty)||0);}); return m;
+}
+function fillSohCtrList(){
+  var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):counterNamesDedupedFallback(pkCounters||[]);
+  var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames?CatalogCore.mergePinnedPlaceNames:function(p,r){return (p||[]).concat(r||[]);};
+  fillDatalist("soh-ctr-list", merge(PK_PINNED_FROM, names));
+}
+function pkSohNormEntry(entry, counter){
+  if(!entry) return null;
+  var rows=entry.rows||[];
+  var map=entry.map||sohMapFromRowsFn(rows);
+  var skuCount=entry.skuCount!=null?entry.skuCount:Object.keys(map).length;
+  var pcs=entry.pcs;
+  if(pcs==null){pcs=0; Object.keys(map).forEach(function(k){pcs+=Number(map[k].qty)||0;});}
+  return {counter:counter||entry.counter||"", asOf:entry.asOf||"", rows:rows, map:map, skuCount:skuCount, pcs:pcs, local:!!entry.local, sourceFile:entry.sourceFile||""};
+}
+function pkSohForFrom(from){
+  from=String(from||"").trim(); if(!from) return null;
+  var key=from.toLowerCase();
+  if(PK_SOH.cache[key]) return PK_SOH.cache[key];
+  pkSohLoadLocalStore();
+  var loc=PK_SOH.local[key]||PK_SOH.local[from];
+  if(loc){ var e=pkSohNormEntry(loc, from); PK_SOH.cache[key]=e; return e; }
+  return null;
+}
+function pkSohPutCache(counter, entry){
+  counter=String(counter||"").trim(); if(!counter||!entry) return;
+  var e=pkSohNormEntry(entry, counter);
+  PK_SOH.cache[counter.toLowerCase()]=e;
+}
+function pkSohStoreLocal(counter, parsed){
+  counter=String(counter||"").trim(); if(!counter||!parsed) return;
+  pkSohLoadLocalStore();
+  var map=sohMapFromRowsFn(parsed.rows||[]);
+  PK_SOH.local[counter.toLowerCase()]={
+    counter:counter, asOf:parsed.asOf||"", rows:parsed.rows||[], map:map,
+    skuCount:parsed.skuCount||Object.keys(map).length, pcs:parsed.pcs||0,
+    sourceFile:parsed.fileName||"", local:true, importedAt:new Date().toISOString()
+  };
+  pkSohSaveLocalStore();
+  pkSohPutCache(counter, PK_SOH.local[counter.toLowerCase()]);
+}
+function pkEnsureSohForBox(b){
+  if(!b||!b.from){ pkRenderSohChip(null); return; }
+  var existing=pkSohForFrom(b.from);
+  if(existing){ pkRenderSohChip(existing); return; }
+  pkFetchSoh(b.from).then(function(e){ pkRenderSohChip(e); pkRenderLines(); }).catch(function(){ pkRenderSohChip(null); });
+}
+function pkFetchSoh(counter){
+  counter=String(counter||"").trim();
+  if(!counter) return Promise.resolve(null);
+  var cached=pkSohForFrom(counter);
+  if(cached) return Promise.resolve(cached);
+  return apiGet({api:"possoh",counter:counter}).then(function(res){
+    if(pkSohIsUnknownApi(res)){ PK_SOH.backendOk=false; return null; }
+    PK_SOH.backendOk=true;
+    if(!res||!res.ok||!(res.rows&&res.rows.length)&&!(res.skuCount>0)) return null;
+    var entry={counter:counter, asOf:res.asOf||"", rows:res.rows||[], skuCount:res.skuCount||(res.rows||[]).length, pcs:res.pcs||0};
+    pkSohPutCache(counter, entry);
+    return pkSohForFrom(counter);
+  }).catch(function(){ PK_SOH.backendOk=false; return null; });
+}
+function pkRenderSohChip(entry){
+  var el=$("h-soh"); if(!el) return;
+  if(!entry||!entry.map||!Object.keys(entry.map).length){ el.classList.add("hidden"); el.textContent=""; return; }
+  el.textContent=formatSohChipFn(entry.asOf, entry.skuCount);
+  el.classList.remove("hidden");
+}
+function pkSohWarnForSku(b, sku){
+  var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return null;
+  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var k=String(sku||"").toUpperCase();
+  return packingSohCheckFn(k, packed[k]||0, soh.map);
+}
+function pkAfterSohWarn(b, sku){
+  var c=pkSohWarnForSku(b, sku); if(!c||c.status==="ok") return;
+  toast(c.warn,"warn");
+  pkFeedback("warn");
+}
+function pkParseSohFile(buf, name){
+  name=name||"";
+  var look=typeof buf==="string"?buf:(function(){var u=new Uint8Array(buf),s="",n=Math.min(u.length,80);for(var i=0;i<n;i++)s+=String.fromCharCode(u[i]);return s;})();
+  var needXlsx=!/^\s*</.test(look)&&!/\.csv$/i.test(name)&&!/\.txt$/i.test(name);
+  var run=function(){
+    if(typeof buf!=="string"&&typeof XLSX!=="undefined"&&needXlsx){
+      var u=buf instanceof Uint8Array?buf:new Uint8Array(buf);
+      var wb=XLSX.read(u,{type:"array",cellDates:true,raw:false});
+      var sh=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(sh,{header:1,defval:"",raw:false});
+      return parsePosInventoryAoaFn(aoa, name);
+    }
+    var legacy=parsePosSoh(typeof buf==="string"?buf:new Uint8Array(buf), name);
+    if(!legacy||!legacy.ok) return legacy||{ok:false,error:"อ่านไฟล์ไม่ได้",rows:[]};
+    var nonzero=(legacy.rows||[]).filter(function(r){return Number(r.qty)!==0;});
+    var meta=window.CatalogCore&&CatalogCore.extractPosSohMeta
+      ?CatalogCore.extractPosSohMeta([legacy.title||""], "")
+      :{title:legacy.title||"",reportName:legacy.title||"",asOf:""};
+    var pcs=nonzero.reduce(function(n,x){return n+(Number(x.qty)||0);},0);
+    return {
+      ok:true, fileName:name, title:legacy.title||meta.title, reportName:meta.reportName||legacy.title||"",
+      asOf:meta.asOf||"", rows:nonzero.map(function(r){return {sku:r.sku,barcode:r.barcode,desc:r.desc,qty:Number(r.qty)||0};}),
+      skuCount:nonzero.length, pcs:pcs, zeroSkipped:(legacy.rows||[]).length-nonzero.length
+    };
+  };
+  if(needXlsx&&typeof XLSX==="undefined") return scLoadXlsx().then(run);
+  return Promise.resolve(run());
+}
+function pkSohOnFile(ev, opts){
+  opts=opts||{};
+  var f=ev.target.files&&ev.target.files[0]; ev.target.value="";
+  if(!f) return;
+  toast("กำลังอ่านไฟล์ SOH…");
+  var reader=new FileReader();
+  reader.onload=function(){
+    var buf=reader.result;
+    var data=typeof buf==="string"?buf:new Uint8Array(buf);
+    pkParseSohFile(data, f.name||"").then(function(r){
+      if(!r||!r.ok){toast((r&&r.error)||"อ่านไฟล์ไม่ได้","err");return;}
+      if(opts.deviceOnly&&opts.counter){
+        pkSohStoreLocal(opts.counter, r);
+        toast("โหลด SOH บนเครื่องแล้ว · "+r.skuCount+" SKU","ok");
+        pkEnsureSohForBox(curBox());
+        pkRenderBox();
+        return;
+      }
+      PK_SOH.imp=r;
+      pkSohRenderImport();
+      if(PKVIEW!=="soh") pkShow("soh");
+      toast("พบ "+r.skuCount+" SKU · "+r.pcs+" ชิ้น (ข้าม qty=0: "+(r.zeroSkipped||0)+")","ok");
+    }).catch(function(){toast("อ่านไฟล์ไม่ได้","err");});
+  };
+  if(/\.csv$|\.txt$/i.test(f.name||"")) reader.readAsText(f);
+  else reader.readAsArrayBuffer(f);
+}
+function pkSohRenderImport(){
+  var box=$("soh-imap"), r=PK_SOH.imp;
+  if(!box) return;
+  if(!r){show(box,false);return;}
+  show(box,true);
+  fillSohCtrList();
+  var map=pkSohReportMap();
+  var pre=map[r.reportName]||map[r.title]||"";
+  if($("soh-ctr")&&!$("soh-ctr").value) $("soh-ctr").value=pre;
+  else if($("soh-ctr")&&pre&&!$("soh-ctr").value) $("soh-ctr").value=pre;
+  if(pre&&$("soh-ctr")) $("soh-ctr").value=pre;
+  $("soh-imp-info").textContent=(r.reportName||r.title||r.fileName||"")+" · as-of "+(r.asOf||"—")+" · "+r.skuCount+" SKU · "+r.pcs+" ชิ้น";
+  var rows=(r.rows||[]).slice(0,15);
+  $("soh-prev").innerHTML="<thead><tr><th>SKU</th><th>Barcode</th><th>Desc</th><th>Qty</th></tr></thead><tbody>"+
+    rows.map(function(x){return "<tr><td class='c'>"+esc(x.sku)+"</td><td class='c'>"+esc(x.barcode)+"</td><td>"+esc(x.desc)+"</td><td>"+x.qty+"</td></tr>";}).join("")+
+    "</tbody>";
+}
+function pkSohUpload(deviceOnly){
+  var r=PK_SOH.imp; if(!r){toast("ยังไม่มีไฟล์","err");return;}
+  var counter=($("soh-ctr")&&$("soh-ctr").value||"").trim();
+  if(!counter){toast("เลือกเคาน์เตอร์ก่อน","err");return;}
+  pkSohRememberMap(r.reportName||r.title||"", counter);
+  if(deviceOnly||PK_SOH.backendOk===false){
+    pkSohStoreLocal(counter, r);
+    toast("บันทึกบนเครื่องแล้ว · "+counter,"ok");
+    pkSohRenderList();
+    return;
+  }
+  toast("กำลังอัปโหลด…");
+  apiPost({action:"replacepossoh",counter:counter,asOf:r.asOf||"",sourceFile:r.fileName||"",rows:r.rows||[]}).then(function(res){
+    if(pkSohIsUnknownApi(res)){
+      PK_SOH.backendOk=false;
+      if($("soh-backend-note")) show($("soh-backend-note"),true);
+      pkSohStoreLocal(counter, r);
+      toast("SOH backend not deployed yet · บันทึกบนเครื่องแทน","warn");
+      pkSohRenderList();
+      return;
+    }
+    if(!res||!res.ok){toast((res&&res.error)||"อัปโหลดไม่สำเร็จ","err");return;}
+    PK_SOH.backendOk=true;
+    pkSohStoreLocal(counter, r);
+    pkSohPutCache(counter, {counter:counter,asOf:r.asOf,rows:r.rows,skuCount:r.skuCount,pcs:r.pcs});
+    toast("อัปโหลดแล้ว · "+(res.skuCount||r.skuCount)+" SKU","ok");
+    PK_SOH.imp=null; show($("soh-imap"),false);
+    pkSohRefreshList();
+  }).catch(function(){
+    PK_SOH.backendOk=false;
+    if($("soh-backend-note")) show($("soh-backend-note"),true);
+    pkSohStoreLocal(counter, r);
+    toast("SOH backend not deployed yet · บันทึกบนเครื่องแทน","warn");
+    pkSohRenderList();
+  });
+}
+function pkSohRefreshList(){
+  pkSohLoadLocalStore();
+  apiGet({api:"possohlist"}).then(function(res){
+    if(pkSohIsUnknownApi(res)){
+      PK_SOH.backendOk=false;
+      if($("soh-backend-note")) show($("soh-backend-note"),true);
+      PK_SOH.list=[];
+      pkSohRenderList();
+      return;
+    }
+    PK_SOH.backendOk=true;
+    if($("soh-backend-note")) show($("soh-backend-note"),false);
+    PK_SOH.list=(res&&res.counters)||[];
+    pkSohRenderList();
+  }).catch(function(){
+    PK_SOH.backendOk=false;
+    if($("soh-backend-note")) show($("soh-backend-note"),true);
+    PK_SOH.list=[];
+    pkSohRenderList();
+  });
+}
+function pkSohMergedList(){
+  pkSohLoadLocalStore();
+  var by={}, i;
+  (PK_SOH.list||[]).forEach(function(c){
+    var k=String(c.counter||"").toLowerCase(); if(!k) return;
+    by[k]={counter:c.counter,asOf:c.asOf||"",skuCount:c.skuCount||0,pcs:c.pcs||0,local:false};
+  });
+  Object.keys(PK_SOH.local||{}).forEach(function(k){
+    var c=PK_SOH.local[k]; if(!c) return;
+    var name=c.counter||k;
+    var key=String(name).toLowerCase();
+    if(!by[key]) by[key]={counter:name,asOf:c.asOf||"",skuCount:c.skuCount||0,pcs:c.pcs||0,local:true};
+    else if(c.local) by[key].local=true;
+  });
+  return Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return String(a.counter).localeCompare(String(b.counter));});
+}
+function pkSohRenderList(){
+  var host=$("soh-list"); if(!host) return;
+  var list=pkSohMergedList();
+  if(!list.length){host.innerHTML='<div class="pk-empty" style="padding:12px 0">ยังไม่มี SOH · Import a POS file</div>';return;}
+  host.innerHTML=list.map(function(c){
+    return '<div class="soh-card" data-c="'+esc(c.counter)+'"><div><b>'+esc(c.counter)+'</b>'+(c.local?' <span class="chip warn">device</span>':'')+'</div>'+
+      '<div class="meta">as-of '+esc(c.asOf||"—")+' · '+esc(c.skuCount)+' SKU · '+esc(c.pcs)+' ชิ้น</div>'+
+      '<div class="pk-act" style="margin-top:8px"><button type="button" class="btn2 danger soh-del" data-c="'+esc(c.counter)+'" style="width:auto;flex:none;margin:0">ลบ · Delete</button></div></div>';
+  }).join("");
+  host.onclick=function(ev){
+    var btn=ev.target.closest(".soh-del"); if(!btn||!host.contains(btn)) return;
+    pkSohDelete(btn.getAttribute("data-c"));
+  };
+}
+function pkSohDelete(counter){
+  counter=String(counter||"").trim(); if(!counter) return;
+  if(!confirm("ลบ SOH ของ «"+counter+"» ?")) return;
+  pkSohLoadLocalStore();
+  delete PK_SOH.local[counter.toLowerCase()];
+  pkSohSaveLocalStore();
+  delete PK_SOH.cache[counter.toLowerCase()];
+  if(PK_SOH.backendOk===false){ pkSohRenderList(); toast("ลบจากเครื่องแล้ว","ok"); return; }
+  apiPost({action:"deletepossoh",counter:counter}).then(function(res){
+    if(pkSohIsUnknownApi(res)){ PK_SOH.backendOk=false; }
+    pkSohRefreshList();
+    toast("ลบแล้ว","ok");
+  }).catch(function(){ pkSohRenderList(); toast("ลบจากเครื่องแล้ว","ok"); });
+}
+function pkSohShow(){
+  fillSohCtrList();
+  pkSohRenderImport();
+  pkSohRefreshList();
+}
+function pkSohLoadOnDeviceForBox(){
+  var b=curBox(); if(!b){toast("เปิดใบแพ็คก่อน","err");return;}
+  var ctr=String(b.from||"").trim();
+  if(!ctr){toast("ใส่ From / ส่งจาก ก่อน แล้วค่อยโหลด SOH","err");return;}
+  var inp=$("h-soh-file"); if(!inp) return;
+  inp.onchange=function(ev){ pkSohOnFile(ev,{deviceOnly:true,counter:ctr}); };
+  inp.click();
 }
 
 /* ---------- tabs / views ---------- */
@@ -2406,7 +2781,7 @@ function camWanted(){
   if(camPaused&&scanner){resumeCam();return;}
   startCam();
 }
-function pkHideAll(){["pk-head","pk-body","pk-home","pk-form","pk-view","pk-label","sc-root"].forEach(function(id){if($(id)) show($(id),false);});}
+function pkHideAll(){["pk-head","pk-body","pk-home","pk-form","pk-view","pk-label","pk-soh","sc-root"].forEach(function(id){if($(id)) show($(id),false);});}
 function pkShow(v){
   PKVIEW=v;
   pkHideAll();
@@ -2419,6 +2794,7 @@ function pkShow(v){
     $("q").placeholder="สแกน / พิมพ์ SKU, บาร์โค้ด, ชื่อ → ใส่กล่อง (*6 หรือ x6 = จำนวน)";
     searchRenderTypeChips();
     pkOfferRestoreDraft(curBox());
+    pkEnsureSohForBox(curBox());
     pkRenderBox();
     camWanted();
   }else{
@@ -2427,6 +2803,7 @@ function pkShow(v){
     pkUpdateBoxBanner();
     show($("pk-"+(v==="label"?"label":v)),true);
     if(v==="home"){pkRenderHome();pkRefreshList();}
+    if(v==="soh"){pkSohShow();}
   }
   window.scrollTo(0,0);
 }
@@ -2619,7 +2996,7 @@ function pkFormSubmit(){
   rememberFrom(from);
   var vals={shipTo:ship,from:from,refNo:$("f-ref").value.trim(),packedBy:by,note:$("f-note").value.trim()};
   if(pkFormEdit&&curBox()){
-    var c=curBox();Object.keys(vals).forEach(function(k){c[k]=vals[k];});c.dirty=true;pkPersist();pkShow("box");return;
+    var c=curBox();Object.keys(vals).forEach(function(k){c[k]=vals[k];});  c.dirty=true;pkPersist();pkEnsureSohForBox(c);pkShow("box");return;
   }
   var b={id:uid(),boxNo:"",status:"Draft",created:formatLoadTime(new Date()),createdTs:Date.now(),lines:[],dirty:true,boxCount:1,activeBox:1};
   Object.keys(vals).forEach(function(k){b[k]=vals[k];});
@@ -2665,6 +3042,7 @@ function pkRenderHead(){
   st.textContent=msg; show(st,!!msg);
   $("b-discard").textContent=b.reopened?"ยกเลิกการแก้ไข · Discard changes":"ยกเลิกใบนี้ · Cancel packing list";
   $("b-save").disabled=pkSaving||!tb.lines;
+  pkRenderSohChip(pkSohForFrom(b.from));
 }
 function pkRenderBoxTabs(){
   var host=$("pk-boxtabs"); if(!host) return;
@@ -2734,8 +3112,10 @@ function pkRenderLines(){
       for(var s=1;s<=n;s++) if(s!==k) mv+='<option value="'+s+'">กล่อง '+s+" / "+n+"</option>";
       mv+="</select>";
     }
+    var sohW=l.sku?pkSohWarnForSku(b,l.sku):null;
+    var sohHtml=sohW&&sohW.status!=="ok"?'<span class="pk-soh-warn'+(sohW.status==="missing"?" pk-soh-miss":"")+'">⚠ '+esc(sohW.warn)+"</span>":"";
     el.innerHTML='<div class="ln-main"><div class="ln-d">'+esc(l.desc||"—")+'</div><div class="ln-m">'+esc(l.sku||"—")+" · "+esc(l.ean||"no barcode")+(l.brand?" · "+esc(l.brand):"")+"</div>"+
-      (l.flag?'<span class="ln-f">⚠ '+esc(l.flag)+"</span>":"")+"</div>"+
+      (l.flag?'<span class="ln-f">⚠ '+esc(l.flag)+"</span>":"")+sohHtml+"</div>"+
       mv+
       '<div class="ln-q"><button type="button" class="qb" data-a="dec" aria-label="minus">−</button><input class="qi" type="number" inputmode="numeric" min="1" max="99999" value="'+(Number(l.qty)||0)+'" aria-label="qty"><button type="button" class="qb" data-a="inc" aria-label="plus">+</button></div>'+
       '<button type="button" class="ln-x" data-a="del" aria-label="delete">×</button>';
@@ -2756,7 +3136,7 @@ function pkLineEvent(ev){
   var l=findLine(b,row.getAttribute("data-k")); if(!l) return;
   var a=t.getAttribute("data-a");
   if(ev.type==="click"){
-    if(a==="inc"){l.qty=(Number(l.qty)||0)+1;}
+    if(a==="inc"){l.qty=(Number(l.qty)||0)+1; if(l.sku) pkAfterSohWarn(b,l.sku);}
     else if(a==="dec"){
       if((Number(l.qty)||0)<=1){if(!confirm("ลบรายการนี้? · Delete line?\n"+(l.desc||l.sku))) return;b.lines.splice(b.lines.indexOf(l),1);}
       else l.qty=Number(l.qty)-1;
@@ -2774,6 +3154,7 @@ function pkLineEvent(ev){
       }
       l.qty=Math.min(v,99999);
     }
+    if(l.sku) pkAfterSohWarn(b, l.sku);
   }else if(ev.type==="change"&&t.classList.contains("ln-mv")){
     var to=Number(t.value)||0;
     t.value="";
@@ -2825,6 +3206,7 @@ function pkAdd(row,scanned,qty,opts){
   pkUndo={boxId:b.id,lineKey:k,boxSeq:boxSeqOf(l),addedQty:qty,created:created,prevTouched:prevTouched,prevTouchSeq:prevTouchSeq,desc:l.desc,sku:l.sku};
   b.dirty=true; pkTouched=k; pkPersist(); pkRenderBox();
   pkAfterAddFeedback(b,l,qty,{dup:camDup});
+  pkAfterSohWarn(b, row.sku);
   logScan(scanned||row.sku,row.sku);
   return true;
 }
@@ -4500,6 +4882,14 @@ function pkInit(){
   if($("tab-count")) $("tab-count").onclick=function(){if(MODE!=="count") setTab("count"); else scShow(scCur()?"work":"home");};
   scInit();
   $("pk-new").onclick=function(){pkNewForm(false);};
+  if($("pk-soh-open")) $("pk-soh-open").onclick=function(){pkShow("soh");};
+  if($("soh-back")) $("soh-back").onclick=function(){pkShow("home");};
+  if($("soh-reload")) $("soh-reload").onclick=function(){pkSohRefreshList();};
+  if($("soh-file")) $("soh-file").addEventListener("change",function(ev){pkSohOnFile(ev);});
+  if($("soh-upload")) $("soh-upload").onclick=function(){pkSohUpload(false);};
+  if($("soh-local-only")) $("soh-local-only").onclick=function(){pkSohUpload(true);};
+  if($("h-soh-local")) $("h-soh-local").onclick=function(){pkSohLoadOnDeviceForBox();};
+  pkSohLoadLocalStore();
   $("pk-reload").onclick=function(){pkRefreshList($("pk-q").value.trim());};
   $("pk-q").addEventListener("input",function(){pkRenderList();clearTimeout(pkInit.qt);pkInit.qt=setTimeout(function(){pkRefreshList($("pk-q").value.trim());},600);});
   $("pk-q").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();var v=$("pk-q").value.trim();var pksc=parsePackScan(v);if(pksc){pkOpenView(pksc.boxNo,pksc.boxSeq||0);return;}pkRefreshList(v);}});
@@ -4548,7 +4938,7 @@ function pkInit(){
   });
 }
 
-window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,SCVIEW:SC.view,SCWORK:SC.work,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox(),sc:scCur()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;},parsePosSoh:parsePosSoh,parseScScan:parseScScan,scScanCode:scScanCode,scResolve:scResolve,scIsDup:scIsDup,scMarkAccepted:scMarkAccepted,scOpen:scOpen,scScan:scScan,scShow:scShow,scExport:scExport,scReconcile:scReconcile,scBucket:scBucket,catalogRowBucket:catalogRowBucket,parsePkSearchQty:parsePkSearchQty,scCur:scCur,SC:function(){return SC;}};
+window.__pk={PK:function(){return PK;},state:function(){return {MODE:MODE,PKVIEW:PKVIEW,SCVIEW:SC.view,SCWORK:SC.work,scanning:scanning,camOk:camOk,camUserOn:camUserOn,sheet:pkSheetOpen,cur:curBox(),sc:scCur()};},setTab:setTab,pkShow:pkShow,pkScan:pkScan,pkAdd:pkAdd,openBoxNo:openBoxNo,pkShowLabel:pkShowLabel,boxNoOf:boxNoOf,parsePackScan:parsePackScan,packQrText:packQrText,makePackQr:makePackQr,displayBoxOf:displayBoxOf,boxCountOf:boxCountOf,activeBoxOf:activeBoxOf,pkAddBox:pkAddBox,labelBoxView:labelBoxView,setCamUserOn:setCamUserOn,camOn:function(){return camUserOn;},apiGet:apiGet,apiPost:apiPost,onScan:onScan,applyDecoded:applyDecoded,fillPlaceLists:fillPlaceLists,counters:function(){return pkCounters;},parsePosSoh:parsePosSoh,parsePosInventoryAoa:parsePosInventoryAoaFn,pkSohForFrom:pkSohForFrom,parseScScan:parseScScan,scScanCode:scScanCode,scResolve:scResolve,scIsDup:scIsDup,scMarkAccepted:scMarkAccepted,scOpen:scOpen,scScan:scScan,scShow:scShow,scExport:scExport,scReconcile:scReconcile,scBucket:scBucket,catalogRowBucket:catalogRowBucket,parsePkSearchQty:parsePkSearchQty,scCur:scCur,SC:function(){return SC;}};
 window.__pc={lookup:lookup,showHits:showHits,candidates:candidates,findExact:findExact,buildIndex:buildIndex,CAT:function(){return CATALOG;},showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
 pkInit();
 loadCatalog();

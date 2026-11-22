@@ -20,6 +20,15 @@ import {
   packingUndoResult,
   PK_BIG_QTY,
   infoBackListDecision,
+  stripLeadingTick,
+  extractPosSohMeta,
+  parsePosInventoryAoa,
+  packingSkuQtyMap,
+  sohMapFromRows,
+  packingSohCheck,
+  packingSohMismatches,
+  packingSohLeftover,
+  formatSohChip,
 } from "../lib/catalog-core.mjs";
 
 const SAMPLE_ROWS = [
@@ -195,4 +204,74 @@ test("packing big qty + type summary + undo + pick sort", () => {
     pick.map((r) => r.sku),
     ["Y", "X", "Z"]
   );
+});
+
+test("POS SOH parse: apostrophe strip, qty!=0, header/as-of", () => {
+  assert.equal(stripLeadingTick("'H0D7010000"), "H0D7010000");
+  assert.equal(stripLeadingTick("\u20183700135021143"), "3700135021143");
+  assert.equal(stripLeadingTick("ABC"), "ABC");
+  var meta = extractPosSohMeta(
+    [
+      "รายงานสินค้าคงคลัง : at Fashion Hall, Siam Paragon 12-22 NOV 2026 22/11/2026",
+      "",
+      "",
+      "",
+      "22/11/2026 15:35",
+    ],
+    "22/11/2026 15:35"
+  );
+  assert.equal(meta.asOf, "22/11/2026 15:35");
+  assert.match(meta.reportName, /Fashion Hall, Siam Paragon/);
+  assert.equal(formatSohChip("22/11/2026 15:35", 110), "SOH ณ 22/11 15:35 · 110 SKU");
+
+  var aoa = [
+    [
+      "รายงานสินค้าคงคลัง : at Fashion Hall, Siam Paragon 12-22 NOV 2026 22/11/2026",
+      "",
+      "",
+      "",
+      "22/11/2026 15:35",
+    ],
+    ["รหัสสินค้า", "รหัสบาร์โค้ด", "ชื่อสินค้า", "จำนวนสินค้าคงเหลือ", "ราคาทุนเฉลี่ย", "มูลค่ารวม"],
+    ["'H0D7010000", "'3700135021143", "Item A", "3", "10", "30"],
+    ["'ZERO001", "'111", "Zero", "0", "1", "0"],
+    ["'H0D7020000", "'3700135021143", "Item B shared bc", "2", "5", "10"],
+    ["", "", "", "", "", ""],
+  ];
+  var r = parsePosInventoryAoa(aoa, "export_inventory_summary_all_20261122.xlsx");
+  assert.equal(r.ok, true);
+  assert.equal(r.asOf, "22/11/2026 15:35");
+  assert.equal(r.skuCount, 2);
+  assert.equal(r.pcs, 5);
+  assert.equal(r.zeroSkipped, 1);
+  assert.equal(r.rows[0].sku, "H0D7010000");
+  assert.equal(r.rows[0].barcode, "3700135021143");
+  assert.equal(r.rows[1].sku, "H0D7020000");
+});
+
+test("packing SOH mismatch + cumulative qty across boxes", () => {
+  var lines = [
+    { sku: "A", qty: 2, boxSeq: 1 },
+    { sku: "A", qty: 3, boxSeq: 2 },
+    { sku: "B", qty: 1, boxSeq: 1 },
+    { sku: "MISS", qty: 2, boxSeq: 1 },
+  ];
+  assert.deepEqual(packingSkuQtyMap(lines), { A: 5, B: 1, MISS: 2 });
+  var soh = sohMapFromRows([
+    { sku: "A", qty: 3, desc: "Alpha" },
+    { sku: "B", qty: 1, desc: "Beta" },
+    { sku: "C", qty: 4, desc: "Left" },
+  ]);
+  assert.equal(packingSohCheck("MISS", 2, soh).status, "missing");
+  assert.equal(packingSohCheck("A", 5, soh).status, "over");
+  assert.equal(packingSohCheck("A", 5, soh).warn, "แพ็ค 5 / POS มี 3");
+  assert.equal(packingSohCheck("B", 1, soh).status, "ok");
+  var mm = packingSohMismatches(lines, soh);
+  assert.equal(mm.length, 2);
+  assert.equal(mm.find((x) => x.sku === "A").packed, 5);
+  assert.equal(mm.find((x) => x.sku === "MISS").status, "missing");
+  var left = packingSohLeftover(lines, soh);
+  assert.equal(left.length, 1);
+  assert.equal(left[0].sku, "C");
+  assert.equal(left[0].left, 4);
 });
