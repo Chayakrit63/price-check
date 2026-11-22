@@ -229,6 +229,17 @@ export function stripPlaceListLabel(s) {
   return m ? m[1].trim() : s;
 }
 
+/**
+ * Packing lookup decision after type filter.
+ * Multi-SKU hits always require a picker (never auto-pick from "already in box").
+ */
+export function packingLookupAction(hitCount) {
+  var n = Number(hitCount) || 0;
+  if (n === 1) return "add";
+  if (n > 1) return "pick";
+  return "miss";
+}
+
 export function filterRowsByType(rows, typeCat, bucketFn) {
   bucketFn = bucketFn || rowTypeBucket;
   if (!typeCat || typeCat === "ALL") return rows ? rows.slice() : [];
@@ -257,6 +268,7 @@ if (typeof window !== "undefined") {
     counterPlaceName: counterPlaceName,
     counterNamesDeduped: counterNamesDeduped,
     stripPlaceListLabel: stripPlaceListLabel,
+    packingLookupAction: packingLookupAction,
     searchCatalog: searchCatalog,
     filterRowsByType: filterRowsByType,
     countByType: countByType,
