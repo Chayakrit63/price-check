@@ -41,6 +41,16 @@ import {
   packingCounterCheckShortName,
   packingCounterCheckExportStamp,
   buildCounterCheckExcelData,
+  applyPackingOps,
+  packingStaleVersion,
+  packingActivePeers,
+  packingPeerBannerText,
+  buildPackingDeltaOp,
+  formatPackingSohLineDetailed,
+  packingSohLineInfoDetailed,
+  packingCounterPackedMap,
+  packingMergeCounterPacked,
+  packingSohSummaryFromPacked,
 } from "../lib/catalog-core.mjs";
 
 test("CatalogCore VERSION is a non-empty release id", () => {
@@ -48,6 +58,8 @@ test("CatalogCore VERSION is a non-empty release id", () => {
   assert.ok(VERSION.length >= 4);
   assert.equal(typeof packingCounterCheck, "function");
   assert.equal(typeof buildCounterCheckExcelData, "function");
+  assert.equal(typeof applyPackingOps, "function");
+  assert.equal(typeof formatPackingSohLineDetailed, "function");
 });
 
 const SAMPLE_ROWS = [
@@ -312,7 +324,7 @@ test("formatPackingSohLine remaining / done / over", () => {
   var over = formatPackingSohLine(3, 5);
   assert.equal(over.status, "over");
   assert.equal(over.over, 2);
-  assert.equal(over.left, 0);
+  assert.equal(over.left, -2); // remaining can go negative when over-packed
   assert.equal(over.text, "POS 3 · แพ็คแล้ว 5 · เกิน 2");
   assert.equal(over.className, "over");
 
@@ -530,4 +542,131 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   var statusNames = data.sheets.slice(3).map((s) => s.name);
   assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ"]);
   assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
+});
+test("applyPackingOps: concurrent deltas merge; duplicate opId ignored; negative deltas", () => {
+  var base = [
+    { sku: "A", ean: "1", desc: "Item A", brand: "X", qty: 2, boxSeq: 1, k: "S:A" },
+  ];
+  var opA = buildPackingDeltaOp({
+    opId: "dev1-1",
+    deviceId: "dev1",
+    sku: "A",
+    ean: "1",
+    desc: "Item A",
+    deltaQty: 3,
+    boxSeq: 1,
+  });
+  var opB = buildPackingDeltaOp({
+    opId: "dev2-1",
+    deviceId: "dev2",
+    sku: "B",
+    ean: "2",
+    desc: "Item B",
+    brand: "Y",
+    deltaQty: 5,
+    boxSeq: 1,
+  });
+  var merged = applyPackingOps(base, [opA, opB]);
+  assert.equal(merged.skippedDup.length, 0);
+  assert.equal(merged.applied.length, 2);
+  var bySku = Object.fromEntries(merged.lines.map((l) => [l.sku, l.qty]));
+  assert.equal(bySku.A, 5);
+  assert.equal(bySku.B, 5);
+
+  // Device A retries same opId + another device adds more — no double count
+  // (server/client must pass already-seen opIds when replaying)
+  var again = applyPackingOps(
+    merged.lines,
+    [
+      opA,
+      buildPackingDeltaOp({
+        opId: "dev2-2",
+        deviceId: "dev2",
+        sku: "A",
+        deltaQty: 1,
+        boxSeq: 1,
+        lineKey: "S:A",
+      }),
+    ],
+    { seenOpIds: merged.seenOpIds }
+  );
+  assert.deepEqual(again.skippedDup, ["dev1-1"]);
+  bySku = Object.fromEntries(again.lines.map((l) => [l.sku, l.qty]));
+  assert.equal(bySku.A, 6);
+
+  var removed = applyPackingOps(again.lines, [
+    buildPackingDeltaOp({
+      opId: "dev1-rm",
+      deviceId: "dev1",
+      sku: "B",
+      deltaQty: -5,
+      boxSeq: 1,
+      lineKey: "S:B",
+    }),
+  ]);
+  assert.ok(!removed.lines.find((l) => l.sku === "B"));
+  assert.equal(removed.lines.find((l) => l.sku === "A").qty, 6);
+
+  assert.equal(packingStaleVersion(3, 4), true);
+  assert.equal(packingStaleVersion(4, 4), false);
+  assert.equal(packingStaleVersion(null, 4), false);
+  var peers = packingActivePeers(
+    [
+      { deviceId: "me", lastSeen: 1000 },
+      { deviceId: "other", lastSeen: 900 },
+      { deviceId: "stale", lastSeen: 100 },
+    ],
+    "me",
+    1000,
+    200
+  );
+  assert.equal(peers.length, 1);
+  assert.equal(peers[0].deviceId, "other");
+  assert.equal(packingPeerBannerText(peers), "อีก 1 เครื่องกำลังแพ็คกล่องนี้");
+  assert.equal(packingPeerBannerText([{ deviceId: "a" }, { deviceId: "b" }]), "อีก 2 เครื่องกำลังแพ็คกล่องนี้");
+});
+
+test("formatPackingSohLineDetailed counter-wide + this-box; over in red", () => {
+  var mid = formatPackingSohLineDetailed(6, 3, 1);
+  assert.equal(mid.status, "ok");
+  assert.equal(mid.left, 3);
+  assert.equal(mid.text, "POS 6 · แพ็คแล้ว 3 (กล่องนี้ 1) · เหลือ 3");
+  assert.equal(mid.className, "ok");
+
+  var over = formatPackingSohLineDetailed(6, 7, 2);
+  assert.equal(over.status, "over");
+  assert.equal(over.over, 1);
+  assert.equal(over.left, -1);
+  assert.equal(over.className, "over");
+  assert.match(over.text, /เกิน 1/);
+  assert.match(over.text, /กล่องนี้ 2/);
+
+  var info = packingSohLineInfoDetailed(
+    "A",
+    3,
+    1,
+    sohMapFromRows([{ sku: "A", qty: 6, desc: "A" }])
+  );
+  assert.equal(info.text, "POS 6 · แพ็คแล้ว 3 (กล่องนี้ 1) · เหลือ 3");
+
+  // other PKs + this draft
+  var other = packingCounterPackedMap([
+    { boxNo: "PK-1", lines: [{ sku: "A", qty: 2 }] },
+    { boxNo: "PK-2", lines: [{ sku: "A", qty: 1 }, { sku: "B", qty: 4 }] },
+  ]);
+  assert.deepEqual(other, { A: 3, B: 4 });
+  var all = packingMergeCounterPacked(other, { A: 1, C: 2 });
+  assert.deepEqual(all, { A: 4, B: 4, C: 2 });
+  var sum = packingSohSummaryFromPacked(
+    sohMapFromRows([
+      { sku: "A", qty: 6 },
+      { sku: "B", qty: 4 },
+      { sku: "C", qty: 1 },
+    ]),
+    all
+  );
+  assert.equal(sum.packedPcs, 10); // A4+B4+C2
+  assert.equal(sum.leftoverSku, 1); // A left 2
+  assert.equal(sum.doneSku, 2); // B exact + C over counts as done (>=)
+  assert.equal(sum.overSku, 1); // C 2>1
 });

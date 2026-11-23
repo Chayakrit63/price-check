@@ -333,6 +333,10 @@ body.typing .tabbar{display:none}
 .ctr-check-pks{font:400 11.5px Prompt;color:#8b0f14;margin-top:4px;word-break:break-word}
 .ctr-check-err{padding:16px 8px;color:#a3161c;font:400 13.5px Prompt;text-align:center;line-height:1.45}
 .ctr-check-err .btn{margin-top:12px}
+.pk-peer{display:none;margin:6px 18px 0;padding:8px 12px;border-radius:10px;background:#fff6e8;border:1px solid #e8c48a;color:#9a5b00;font:500 12.5px Prompt;line-height:1.35}
+.pk-peer.show{display:block}
+.pk-peer.sync{background:#f3faf4;border-color:#b7d7be;color:#2e7d32}
+.pk-unsync{font:400 11.5px Prompt;color:#9a5b00;margin-left:6px}
 .soh-preview{width:100%;border-collapse:collapse;font:400 12.5px Prompt;margin-top:8px}
 .soh-preview th,.soh-preview td{border-bottom:1px solid #f1e3cf;padding:6px 8px;text-align:left}
 .soh-preview th{color:#8b0f14;font-weight:500}
@@ -508,6 +512,7 @@ body.typing .tabbar{display:none}
   <input id="file" type="file" accept="image/*" capture="environment" tabindex="-1" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
   <div id="file-reader" aria-hidden="true"></div>
 <div id="pk-box-banner" class="pk-box-banner" aria-live="polite"></div>
+<div id="pk-peer" class="pk-peer" aria-live="polite"></div>
 <div id="search-type-wrap" class="pk-type-filt hidden">
   <div class="sc-flab">ประเภท · Type</div>
   <div class="sc-chips" id="search-type-chips"></div>
@@ -749,9 +754,9 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION on every release so GitHub Pages clients drop stale modules -->
-<script type="module" src="lib/catalog-core.mjs?v=20261122e"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261123a"></script>
 <script>
-var APP_VER="20261122e";
+var APP_VER="20261123a";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -2134,6 +2139,12 @@ var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
 var PK_PINNED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
 var PKSOHMAP="productInfo.posSoh.reportMap", PKSOHLOCAL="productInfo.posSoh.local";
 var PK_SOH={backendOk:null, list:[], cache:{}, local:{}, imp:null, loading:false, last:null, lineFilter:null};
+/** Counter-wide packed qty (other PKs), refreshed via api=packtotals. */
+var PK_CTR_PACK={backendOk:null, counter:"", exclude:"", map:{}, pkCount:0, fetchedAt:0, loading:false};
+var PK_DEVICE_KEY="productInfo.pack.deviceId";
+var PK_OPS_KEY="productInfo.pack.ops.v1";
+var PK_DELTA={ok:null, flushing:false, pollTimer:null, queue:[]}; // queue: [{boxNo, ops:[]}]
+var pkPeerBanner="";
 var QR_LIB="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
 var BC_LIB="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
 function parsePackScan(text){
@@ -2160,6 +2171,8 @@ function pkLoad(){
   Object.keys(PK.drafts).forEach(function(k){var b=PK.drafts[k];if(!b||!b.lines){delete PK.drafts[k];return;}b.reserving=false;normalizeDoc(b);});
   if(PK.cur&&!PK.drafts[PK.cur]) PK.cur="";
   try{pkBoxes=JSON.parse(localStorage.getItem(PKLIST)||"[]")||[];}catch(e){pkBoxes=[];}
+  pkLoadOpsQueue();
+  pkDeviceId();
 }
 function pkPersist(){
   var b=curBox();
@@ -2258,6 +2271,7 @@ function pkUndoLastAdd(){
   }
   if(u.prevTouchSeq!=null) b.touchSeq=u.prevTouchSeq;
   b.dirty=true; pkTouched=""; pkPersist();
+  pkEnqueueDelta(b, {k:u.lineKey, sku:u.sku, desc:u.desc, boxSeq:u.boxSeq||activeBoxOf(b), ean:(line&&line.ean)||"", brand:(line&&line.brand)||"", flag:(line&&line.flag)||""}, -(Number(u.addedQty)||1));
   if(u.sku) pkSetSohLast(u.sku, u.desc||"");
   pkRenderBox();
   pkHideSnackbar();
@@ -2265,12 +2279,180 @@ function pkUndoLastAdd(){
 }
 function pkUpdateBoxBanner(){
   var el=$("pk-box-banner"); if(!el) return;
-  if(!pkPackBoxActive()){el.classList.remove("show");return;}
-  var b=curBox(); if(!b){el.classList.remove("show");return;}
+  if(!pkPackBoxActive()){el.classList.remove("show"); pkUpdatePeerBanner(); return;}
+  var b=curBox(); if(!b){el.classList.remove("show"); pkUpdatePeerBanner(); return;}
   var k=activeBoxOf(b), n=boxCountOf(b);
-  if(n<=1){el.classList.remove("show");return;}
-  el.textContent="กำลังใส่: กล่อง "+k+" / "+n+" · Adding to box "+k+" / "+n;
+  if(n<=1){el.classList.remove("show");}
+  else{
+    el.textContent="กำลังใส่: กล่อง "+k+" / "+n+" · Adding to box "+k+" / "+n;
+    el.classList.add("show");
+  }
+  pkUpdatePeerBanner();
+}
+function pkDeviceId(){
+  var id="";
+  try{id=localStorage.getItem(PK_DEVICE_KEY)||"";}catch(e){}
+  if(!id){
+    id="d"+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+    try{localStorage.setItem(PK_DEVICE_KEY,id);}catch(e){}
+  }
+  return id;
+}
+function pkLoadOpsQueue(){
+  try{PK_DELTA.queue=JSON.parse(localStorage.getItem(PK_OPS_KEY)||"[]")||[];}catch(e){PK_DELTA.queue=[];}
+  if(!Array.isArray(PK_DELTA.queue)) PK_DELTA.queue=[];
+}
+function pkSaveOpsQueue(){
+  try{localStorage.setItem(PK_OPS_KEY,JSON.stringify(PK_DELTA.queue||[]));}catch(e){}
+}
+function pkPendingOpsFor(boxNo){
+  boxNo=String(boxNo||"").trim().toUpperCase();
+  var q=(PK_DELTA.queue||[]).filter(function(x){return String(x.boxNo||"").toUpperCase()===boxNo;})[0];
+  return (q&&q.ops)||[];
+}
+function pkPendingOpsCount(boxNo){
+  return pkPendingOpsFor(boxNo).length;
+}
+function pkEnqueueDelta(b, line, deltaQty){
+  if(!b||!b.boxNo||!line||!deltaQty) return null;
+  pkLoadOpsQueue();
+  var op=window.CatalogCore&&CatalogCore.buildPackingDeltaOp
+    ? CatalogCore.buildPackingDeltaOp({
+        opId:uid(),
+        deviceId:pkDeviceId(),
+        clientTs:Date.now(),
+        boxNo:b.boxNo,
+        lineKey:line.k||(line.sku?("S:"+String(line.sku).toUpperCase()):""),
+        sku:line.sku||"",
+        ean:line.ean||"",
+        desc:line.desc||"",
+        brand:line.brand||"",
+        flag:line.flag||"",
+        boxSeq:boxSeqOf(line),
+        deltaQty:deltaQty
+      })
+    : null;
+  if(!op) return null;
+  var key=String(b.boxNo).toUpperCase();
+  var bucket=(PK_DELTA.queue||[]).filter(function(x){return String(x.boxNo||"").toUpperCase()===key;})[0];
+  if(!bucket){bucket={boxNo:b.boxNo, ops:[]}; PK_DELTA.queue.push(bucket);}
+  bucket.ops.push(op);
+  pkSaveOpsQueue();
+  clearTimeout(pkEnqueueDelta.t);
+  pkEnqueueDelta.t=setTimeout(function(){pkFlushPackOps(b.boxNo);},1800);
+  pkUpdatePeerBanner();
+  return op;
+}
+function pkFlushPackOps(boxNo){
+  pkLoadOpsQueue();
+  boxNo=String(boxNo||(curBox()&&curBox().boxNo)||"").trim();
+  if(!boxNo) return Promise.resolve(null);
+  if(PK_DELTA.flushing) return Promise.resolve(null);
+  var bucket=(PK_DELTA.queue||[]).filter(function(x){return String(x.boxNo||"").toUpperCase()===boxNo.toUpperCase();})[0];
+  if(!bucket||!(bucket.ops&&bucket.ops.length)) return Promise.resolve(null);
+  if(PK_DELTA.ok===false) return Promise.resolve(null);
+  var ops=bucket.ops.slice();
+  PK_DELTA.flushing=true;
+  pkUpdatePeerBanner();
+  return apiPost({action:"appendpackops", boxNo:boxNo, deviceId:pkDeviceId(), ops:ops, label:packedByName()}).then(function(res){
+    PK_DELTA.flushing=false;
+    if(pkSohIsUnknownApi(res)){ PK_DELTA.ok=false; pkUpdatePeerBanner(); return null; }
+    if(!res||!res.ok){
+      if(res&&res.error==="STALE_VERSION"){ pkApplyServerBox(curBox(), res.box); }
+      throw new Error((res&&res.error)||"flush fail");
+    }
+    PK_DELTA.ok=true;
+    var sent={}; ops.forEach(function(o){if(o.opId) sent[o.opId]=1;});
+    PK_DELTA.queue=(PK_DELTA.queue||[]).map(function(q){
+      if(String(q.boxNo||"").toUpperCase()!==boxNo.toUpperCase()) return q;
+      q.ops=(q.ops||[]).filter(function(o){return !o.opId||!sent[o.opId];});
+      return q;
+    }).filter(function(q){return q.ops&&q.ops.length;});
+    pkSaveOpsQueue();
+    if(res.box) pkApplyServerBox(curBox(), res.box, true);
+    else if(res.rev!=null&&curBox()&&curBox().boxNo===boxNo) curBox().rev=res.rev;
+    pkUpdatePeerBanner();
+    return res;
+  }).catch(function(err){
+    PK_DELTA.flushing=false;
+    pkUpdatePeerBanner();
+    return null;
+  });
+}
+function pkApplyServerBox(b, serverBox, keepPending){
+  if(!b||!serverBox) return;
+  if(serverBox.rev!=null) b.rev=serverBox.rev;
+  b.peers=serverBox.peers||[];
+  if(serverBox.supportsDelta) PK_DELTA.ok=true;
+  var serverLines=serverBox.items||serverBox.lines||[];
+  var pending=keepPending?pkPendingOpsFor(b.boxNo):[];
+  var merged=window.CatalogCore&&CatalogCore.applyPackingOps
+    ? CatalogCore.applyPackingOps(serverLines, pending)
+    : {lines:serverLines};
+  b.lines=(merged.lines||[]).map(function(l){
+    return {
+      k:l.k||(l.sku?("S:"+String(l.sku).toUpperCase()):("N:"+(norm(l.ean)||norm(l.desc)).toUpperCase())),
+      sku:l.sku||"", ean:l.ean||"", desc:l.desc||"", brand:l.brand||"",
+      qty:Number(l.qty)||0, flag:l.flag||"", boxSeq:boxSeqOf(l),
+      lastDeviceId:l.lastDeviceId||"", lastOpAt:l.lastOpAt||""
+    };
+  });
+  b.dirty=!!(pending&&pending.length);
+  normalizeDoc(b);
+  pkPersist();
+  if(pkPackBoxActive()&&curBox()&&curBox().id===b.id) pkRenderBox();
+}
+function pkUpdatePeerBanner(){
+  var el=$("pk-peer"); if(!el) return;
+  if(!pkPackBoxActive()){el.classList.remove("show");el.textContent="";return;}
+  var b=curBox(); if(!b||!b.boxNo){el.classList.remove("show");el.textContent="";return;}
+  var peers=window.CatalogCore&&CatalogCore.packingActivePeers
+    ? CatalogCore.packingActivePeers(b.peers||[], pkDeviceId(), Date.now(), 30000)
+    : [];
+  var text=window.CatalogCore&&CatalogCore.packingPeerBannerText
+    ? CatalogCore.packingPeerBannerText(peers)
+    : "";
+  var pending=pkPendingOpsCount(b.boxNo);
+  var bits=[];
+  if(text) bits.push(text);
+  if(pending) bits.push("รอซิงก์ "+pending+" รายการ");
+  if(PK_DELTA.flushing) bits.push("กำลังซิงก์…");
+  if(!bits.length){el.classList.remove("show");el.textContent="";return;}
+  el.textContent=bits.join(" · ");
+  el.classList.toggle("sync", !pending&&!text);
   el.classList.add("show");
+}
+function pkPullBoxSync(){
+  var b=curBox();
+  if(!b||!b.boxNo||!pkPackBoxActive()) return;
+  if(document.hidden) return;
+  var no=b.boxNo;
+  apiGet({api:"box", no:no}).then(function(res){
+    if(!res||!res.ok||!res.box) return;
+    if(curBox()&&curBox().boxNo===no){
+      pkApplyServerBox(curBox(), res.box, true);
+      if(res.box.peers) curBox().peers=res.box.peers;
+      pkUpdatePeerBanner();
+    }
+  }).catch(function(){});
+  if(b.from) pkFetchCounterPacked(b.from, b.boxNo||"", true).then(function(){ pkRefreshCounterPackedUi(); });
+  apiPost({action:"packpresence", boxNo:no, deviceId:pkDeviceId(), label:packedByName()}).then(function(res){
+    if(res&&res.box&&curBox()&&curBox().boxNo===no){
+      curBox().peers=res.box.peers||res.peers||[];
+      if(res.box.rev!=null) curBox().rev=res.box.rev;
+      pkUpdatePeerBanner();
+    }
+  }).catch(function(){});
+}
+function pkStartPackPoll(){
+  pkStopPackPoll();
+  PK_DELTA.pollTimer=setInterval(function(){
+    if(!pkPackBoxActive()||document.hidden) return;
+    pkPullBoxSync();
+  }, 8000);
+}
+function pkStopPackPoll(){
+  if(PK_DELTA.pollTimer){clearInterval(PK_DELTA.pollTimer);PK_DELTA.pollTimer=null;}
 }
 function pkSaveStatusText(b){
   if(pkSaving) return {t:"กำลังบันทึก…",c:"busy"};
@@ -2566,6 +2748,23 @@ function packingSohLineInfoFn(sku, packed, map){
   if(window.CatalogCore&&CatalogCore.packingSohLineInfo) return CatalogCore.packingSohLineInfo(sku, packed, map);
   return null;
 }
+function packingSohLineInfoDetailedFn(sku, packedAll, packedThis, map){
+  if(window.CatalogCore&&CatalogCore.packingSohLineInfoDetailed)
+    return CatalogCore.packingSohLineInfoDetailed(sku, packedAll, packedThis, map);
+  return packingSohLineInfoFn(sku, packedAll, map);
+}
+function packingMergeCounterPackedFn(otherMap, thisMap){
+  if(window.CatalogCore&&CatalogCore.packingMergeCounterPacked)
+    return CatalogCore.packingMergeCounterPacked(otherMap, thisMap);
+  var out={}; Object.keys(otherMap||{}).forEach(function(k){out[k]=Number(otherMap[k])||0;});
+  Object.keys(thisMap||{}).forEach(function(k){out[k]=(out[k]||0)+(Number(thisMap[k])||0);});
+  return out;
+}
+function packingSohSummaryFromPackedFn(map, packed){
+  if(window.CatalogCore&&CatalogCore.packingSohSummaryFromPacked)
+    return CatalogCore.packingSohSummaryFromPacked(map, packed);
+  return packingSohSummaryFn(Object.keys(packed||{}).map(function(s){return {sku:s,qty:packed[s]};}), map);
+}
 function formatSohPosBadgeFn(sku, map){
   if(window.CatalogCore&&CatalogCore.formatSohPosBadge) return CatalogCore.formatSohPosBadge(sku, map);
   return "";
@@ -2575,10 +2774,22 @@ function pkActiveSohMap(){
   var soh=pkSohForFrom(b&&b.from);
   return soh&&soh.map?soh.map:null;
 }
+/** This-box packed map + counter-wide (other PKs + this draft). */
+function pkPackedMapsForBox(b){
+  var thisMap=packingSkuQtyMapFn(packItemList(b)||{});
+  var other=PK_CTR_PACK.map||{};
+  var sameCtr=!!(b&&b.from&&String(b.from).trim().toLowerCase()===String(PK_CTR_PACK.counter||"").trim().toLowerCase());
+  var useCtr=sameCtr&&PK_CTR_PACK.backendOk===true;
+  var all=useCtr?packingMergeCounterPackedFn(other, thisMap):thisMap;
+  return {thisMap:thisMap, allMap:all, counterWide:useCtr};
+}
 function pkSohLineHtml(b, sku){
   var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return "";
-  var packed=packingSkuQtyMapFn(packItemList(b)||{});
-  var info=packingSohLineInfoFn(sku, packed[String(sku||"").toUpperCase()]||0, soh.map);
+  var maps=pkPackedMapsForBox(b);
+  var k=String(sku||"").toUpperCase();
+  var packedThis=maps.thisMap[k]||0;
+  var packedAll=maps.allMap[k]||0;
+  var info=packingSohLineInfoDetailedFn(sku, packedAll, maps.counterWide?packedThis:null, soh.map);
   if(!info) return "";
   return '<span class="pk-soh-line '+esc(info.className)+'">'+esc(info.text)+"</span>";
 }
@@ -2613,9 +2824,10 @@ function pkRenderSohLast(){
   var b=curBox();
   var soh=pkSohForFrom(b&&b.from);
   if(!soh||!soh.map||!PK_SOH.last||!PK_SOH.last.sku){el.classList.remove("show");return;}
-  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var maps=pkPackedMapsForBox(b);
   var sku=PK_SOH.last.sku;
-  var info=packingSohLineInfoFn(sku, packed[String(sku).toUpperCase()]||0, soh.map);
+  var k=String(sku).toUpperCase();
+  var info=packingSohLineInfoDetailedFn(sku, maps.allMap[k]||0, maps.counterWide?maps.thisMap[k]||0:null, soh.map);
   var st=formatPackingSohLastStatusFn(info); if(!st){el.classList.remove("show");return;}
   var desc=PK_SOH.last.desc||(soh.map[String(sku).toUpperCase()]&&soh.map[String(sku).toUpperCase()].desc)||"";
   el.innerHTML='<div class="t1">'+esc(pkShortDesc(desc||sku))+'</div><div class="t2">'+esc(sku)+'</div><span class="st '+esc(st.className)+'">'+esc(st.text)+"</span>";
@@ -2647,8 +2859,9 @@ function pkJumpToSohSku(sku){
 function pkSohLineMatchesFilter(b, sku, filter){
   if(!filter) return true;
   var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return true;
-  var packed=packingSkuQtyMapFn(packItemList(b)||{});
-  var info=packingSohLineInfoFn(sku, packed[String(sku||"").toUpperCase()]||0, soh.map);
+  var maps=pkPackedMapsForBox(b);
+  var k=String(sku||"").toUpperCase();
+  var info=packingSohLineInfoDetailedFn(sku, maps.allMap[k]||0, maps.counterWide?maps.thisMap[k]||0:null, soh.map);
   if(!info) return false;
   return info.status===filter;
 }
@@ -2672,9 +2885,16 @@ function pkRenderSohSummary(){
   var b=curBox();
   var soh=pkSohForFrom(b&&b.from);
   if(!soh||!soh.map){el.classList.remove("show");el.innerHTML="";return;}
-  var sum=packingSohSummaryFn(packItemList(b)||[], soh.map); if(!sum){el.classList.remove("show");return;}
+  var maps=pkPackedMapsForBox(b);
+  var sum=maps.counterWide
+    ? packingSohSummaryFromPackedFn(soh.map, maps.allMap)
+    : packingSohSummaryFn(packItemList(b)||[], soh.map);
+  if(!sum){el.classList.remove("show");return;}
+  var scope=maps.counterWide
+    ?('<span style="color:#9a8670">(counter · ใบอื่น '+((PK_CTR_PACK.pkCount||0))+' + ใบนี้)</span>')
+    :('<span style="color:#9a8670">(ใบนี้)</span>');
   var f=PK_SOH.lineFilter;
-  el.innerHTML='<div class="row">POS '+sum.posPcs+' ชิ้น · แพ็คแล้ว '+sum.packedPcs+' · ครบ '+sum.doneSku+'/'+sum.sohSkuCount+' SKU · เกิน '+sum.overSku+' SKU · ไม่มีใน POS '+sum.missingSku+' <span style="color:#9a8670">(ใบนี้)</span></div>'+
+  el.innerHTML='<div class="row">POS '+sum.posPcs+' ชิ้น · แพ็คแล้ว '+sum.packedPcs+' · ครบ '+sum.doneSku+'/'+sum.sohSkuCount+' SKU · เกิน '+sum.overSku+' SKU · ไม่มีใน POS '+sum.missingSku+' '+scope+'</div>'+
     '<div class="acts">'+
       '<button type="button" class="err'+(f==="over"?" on":"")+'" data-f="over" '+(sum.overSku?"":"disabled")+'>เกิน '+sum.overSku+'</button>'+
       '<button type="button" class="warn'+(f==="missing"?" on":"")+'" data-f="missing" '+(sum.missingSku?"":"disabled")+'>ไม่มีใน POS '+sum.missingSku+'</button>'+
@@ -2703,17 +2923,24 @@ function pkSohBrandOf(sku, desc){
 function pkOpenSohLeftoverSheet(){
   var b=curBox(); if(!b) return;
   var soh=pkSohForFrom(b.from); if(!soh||!soh.map) return;
-  var rows=packingSohLeftoverFn(packItemList(b)||[], soh.map).map(function(r){
+  var maps=pkPackedMapsForBox(b);
+  var leftLines=maps.counterWide
+    ? Object.keys(maps.allMap).map(function(sku){return {sku:sku, qty:maps.allMap[sku]};})
+    : packItemList(b)||[];
+  var rows=packingSohLeftoverFn(leftLines, soh.map).map(function(r){
     return Object.assign({}, r, {brand:pkSohBrandOf(r.sku, r.desc)});
   });
   var state={q:"", brand:"", group:true};
-  var body=openSheet("ยังไม่แพ็ค · Remaining (ใบนี้)", (soh.asOf?("SOH ณ "+soh.asOf+" · "):"")+rows.length+" SKU");
+  var titleScope=maps.counterWide?"(counter)":"(ใบนี้)";
+  var body=openSheet("ยังไม่แพ็ค · Remaining "+titleScope, (soh.asOf?("SOH ณ "+soh.asOf+" · "):"")+rows.length+" SKU");
   function paint(){
     var filtered=filterSohLeftoverFn(rows, state.q, state.brand);
     var brands={};
     rows.forEach(function(r){var br=r.brand||"—"; brands[br]=(brands[br]||0)+1;});
     var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
-    var html='<p class="ctr-check-note">นับเฉพาะใบแพ็คที่เปิดอยู่ · This open PK only. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter ทุกใบ</button></p>';
+    var html=maps.counterWide
+      ?('<p class="ctr-check-note">นับทุกใบ PK ของ counter นี้ + ใบที่เปิด · All PKs for this counter. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter</button></p>')
+      :('<p class="ctr-check-note">นับเฉพาะใบแพ็คที่เปิดอยู่ · This open PK only. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter ทุกใบ</button></p>');
     html+='<label class="fl" style="margin:0 0 8px"><span>ค้นหา · Search</span><input id="soh-left-q" value="'+esc(state.q)+'" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
     if(brandKeys.length>1){
       html+='<div class="sc-chips" style="margin:0 0 10px" id="soh-left-brands">'+
@@ -3227,11 +3454,43 @@ function pkSohStoreLocal(counter, parsed){
   pkSohSaveLocalStore();
   pkSohPutCache(counter, PK_SOH.local[counter.toLowerCase()]);
 }
+function pkFetchCounterPacked(counter, excludeBoxNo, force){
+  counter=String(counter||"").trim();
+  if(!counter) return Promise.resolve(null);
+  var excl=String(excludeBoxNo||"").trim().toUpperCase();
+  var same=String(PK_CTR_PACK.counter||"").toLowerCase()===counter.toLowerCase()
+    && String(PK_CTR_PACK.exclude||"").toUpperCase()===excl
+    && PK_CTR_PACK.backendOk===true
+    && (Date.now()-(PK_CTR_PACK.fetchedAt||0)<4000);
+  if(!force&&same) return Promise.resolve(PK_CTR_PACK);
+  if(PK_CTR_PACK.loading&&!force) return Promise.resolve(PK_CTR_PACK);
+  PK_CTR_PACK.loading=true;
+  return apiGet({api:"packtotals", counter:counter, q:counter, exclude:excl}).then(function(res){
+    PK_CTR_PACK.loading=false;
+    if(pkSohIsUnknownApi(res)){ PK_CTR_PACK.backendOk=false; return null; }
+    if(!res||!res.ok){ PK_CTR_PACK.backendOk=false; return null; }
+    PK_CTR_PACK.backendOk=true;
+    PK_CTR_PACK.counter=counter;
+    PK_CTR_PACK.exclude=excl;
+    PK_CTR_PACK.map=res.skuQty||{};
+    PK_CTR_PACK.pkCount=res.pkCount||(res.pkNos&&res.pkNos.length)||0;
+    PK_CTR_PACK.fetchedAt=Date.now();
+    return PK_CTR_PACK;
+  }).catch(function(){ PK_CTR_PACK.loading=false; PK_CTR_PACK.backendOk=false; return null; });
+}
+function pkRefreshCounterPackedUi(){
+  if(!pkPackBoxActive()) return;
+  pkRenderSohUi();
+  pkRenderLines();
+}
 function pkEnsureSohForBox(b){
   if(!b||!b.from){ pkRenderSohChip(null); pkRenderSohLast(); pkRenderSohSummary(); return; }
   var existing=pkSohForFrom(b.from);
-  if(existing){ pkRenderSohUi(); return; }
-  pkFetchSoh(b.from).then(function(){ pkRenderSohUi(); pkRenderLines(); }).catch(function(){ pkRenderSohChip(null); pkRenderSohLast(); pkRenderSohSummary(); });
+  var packedP=pkFetchCounterPacked(b.from, b.boxNo||"", false);
+  var sohP=existing?Promise.resolve(existing):pkFetchSoh(b.from);
+  Promise.all([sohP, packedP]).then(function(){
+    pkRenderSohUi(); pkRenderLines();
+  }).catch(function(){ pkRenderSohChip(null); pkRenderSohLast(); pkRenderSohSummary(); });
 }
 function pkFetchSoh(counter){
   counter=String(counter||"").trim();
@@ -3255,9 +3514,9 @@ function pkRenderSohChip(entry){
 }
 function pkSohWarnForSku(b, sku){
   var soh=pkSohForFrom(b&&b.from); if(!soh||!soh.map) return null;
-  var packed=packingSkuQtyMapFn(packItemList(b)||{});
+  var maps=pkPackedMapsForBox(b);
   var k=String(sku||"").toUpperCase();
-  return packingSohCheckFn(k, packed[k]||0, soh.map);
+  return packingSohCheckFn(k, maps.allMap[k]||0, soh.map);
 }
 function pkAfterSohWarn(b, sku){
   var c=pkSohWarnForSku(b, sku); if(!c||(c.status!=="missing"&&c.status!=="over")) return;
@@ -3499,10 +3758,17 @@ function pkShow(v){
     $("q").placeholder="สแกน / พิมพ์ SKU, บาร์โค้ด, ชื่อ → ใส่กล่อง (*6 หรือ x6 = จำนวน)";
     searchRenderTypeChips();
     pkOfferRestoreDraft(curBox());
+    pkLoadOpsQueue();
     pkEnsureSohForBox(curBox());
     pkRenderBox();
     camWanted();
+    pkStartPackPoll();
+    if(curBox().boxNo){
+      pkFlushPackOps(curBox().boxNo);
+      pkPullBoxSync();
+    }
   }else{
+    pkStopPackPoll();
     show($("scan"),false);
     stopCam();
     pkUpdateBoxBanner();
@@ -3795,9 +4061,15 @@ function pkMoveLine(l, to){
   to=Math.round(Number(to)||0);
   var n=boxCountOf(b), from=boxSeqOf(l);
   if(!(to>=1&&to<=n)||to===from) return;
+  var qty=Number(l.qty)||0;
+  var snap={k:l.k, sku:l.sku, ean:l.ean, desc:l.desc, brand:l.brand, flag:l.flag, boxSeq:from};
   var other=findLine(b,l.k,to);
-  if(other){ other.qty=(Number(other.qty)||0)+(Number(l.qty)||0); b.lines.splice(b.lines.indexOf(l),1); }
+  if(other){ other.qty=(Number(other.qty)||0)+qty; b.lines.splice(b.lines.indexOf(l),1); }
   else l.boxSeq=to;
+  if(qty){
+    pkEnqueueDelta(b, snap, -qty);
+    pkEnqueueDelta(b, Object.assign({}, snap, {boxSeq:to}), qty);
+  }
   b.dirty=true; pkTouched=""; pkPersist(); pkRenderBox();
   toast("ย้ายไปกล่อง "+to+" / "+n,"ok");
 }
@@ -3850,6 +4122,8 @@ function pkLineEvent(ev){
   var b=curBox(); if(!b) return;
   var l=findLine(b,row.getAttribute("data-k")); if(!l) return;
   var a=t.getAttribute("data-a");
+  var beforeQty=Number(l.qty)||0;
+  var snap={k:l.k, sku:l.sku, ean:l.ean, desc:l.desc, brand:l.brand, flag:l.flag, boxSeq:boxSeqOf(l)};
   if(ev.type==="click"){
     if(a==="inc"){l.qty=(Number(l.qty)||0)+1; if(l.sku) pkAfterSohWarn(b,l.sku);}
     else if(a==="dec"){
@@ -3876,8 +4150,11 @@ function pkLineEvent(ev){
     if(to) pkMoveLine(l,to);
     return;
   }else return;
+  var afterQty=b.lines.indexOf(l)>=0?(Number(l.qty)||0):0;
+  var delta=afterQty-beforeQty;
+  if(delta) pkEnqueueDelta(b, snap, delta);
   b.dirty=true; pkTouched=""; pkPersist();
-  if(l&&l.sku) pkSetSohLast(l.sku, l.desc||"");
+  if(l&&l.sku&&b.lines.indexOf(l)>=0) pkSetSohLast(l.sku, l.desc||"");
   else if(PK_SOH.last&&PK_SOH.last.sku&&!(packItemList(b)||[]).some(function(x){return String(x.sku||"").toUpperCase()===String(PK_SOH.last.sku).toUpperCase();})){
     /* keep last SKU bar even if line deleted so status can flip to remaining */
   }
@@ -3925,6 +4202,7 @@ function pkAdd(row,scanned,qty,opts){
   pkLastAddSku=k; pkLastAddAt=now;
   pkUndo={boxId:b.id,lineKey:k,boxSeq:boxSeqOf(l),addedQty:qty,created:created,prevTouched:prevTouched,prevTouchSeq:prevTouchSeq,desc:l.desc,sku:l.sku};
   b.dirty=true; pkTouched=k; pkPersist();
+  pkEnqueueDelta(b, l, qty);
   pkSetSohLast(row.sku, l.desc||row.desc||"");
   pkRenderBox();
   pkAfterAddFeedback(b,l,qty,{dup:camDup});
@@ -3945,7 +4223,9 @@ function pkAddUnknown(code,desc,qty){
   else{l={k:k,sku:"",ean:String(code||"").trim().slice(0,60),desc:desc,brand:"",qty:qty,flag:"NOT IN MASTER",boxSeq:activeBoxOf(b)};b.lines.push(l);}
   pkMarkTouched(b,l);
   pkUndo={boxId:b.id,lineKey:k,boxSeq:boxSeqOf(l),addedQty:qty,created:created,prevTouched:prevTouched,prevTouchSeq:prevTouchSeq,desc:l.desc,sku:""};
-  b.dirty=true; pkTouched=k; pkPersist(); pkRenderBox();
+  b.dirty=true; pkTouched=k; pkPersist();
+  pkEnqueueDelta(b, l, qty);
+  pkRenderBox();
   pkAfterAddFeedback(b,l,qty,{});
   logScan(code,"");
   return true;
@@ -4067,16 +4347,35 @@ function pkDoSaveBox(){
   var n=boxCountOf(b);
   pkSaving=true; pkSaveFail=false; pkRenderHead();
   var btn=$("b-save"); btn.disabled=true; btn.textContent="กำลังบันทึก… · Saving…";
-  var payload=pkHeader(b);
-  payload.boxCount=n;
-  payload.lines=b.lines.map(function(l){return {sku:l.sku,ean:l.ean,desc:l.desc,brand:l.brand,qty:Number(l.qty)||0,flag:l.flag||"",boxSeq:boxSeqOf(l)};});
-  apiPost({action:"savebox",box:payload}).then(function(res){
-    if(!res||!res.ok||!res.box) throw new Error((res&&res.error)||"save failed");
+  var pending=pkPendingOpsCount(b.boxNo);
+  var flushP=b.boxNo?pkFlushPackOps(b.boxNo):Promise.resolve(null);
+  flushP.then(function(){
+    var still=pkPendingOpsCount(b.boxNo);
+    if(still&&PK_DELTA.ok!==false){
+      if(!confirm("ยังมี "+still+" รายการรอซิงก์ · "+still+" pending ops not synced.\nบันทึกต่อหรือยกเลิก? · Save anyway (may miss peer lines)?")){
+        throw new Error("cancelled — pending ops");
+      }
+    }
+    var payload=pkHeader(b);
+    payload.boxCount=n;
+    payload.lines=b.lines.map(function(l){return {sku:l.sku,ean:l.ean,desc:l.desc,brand:l.brand,qty:Number(l.qty)||0,flag:l.flag||"",boxSeq:boxSeqOf(l)};});
+    var body={action:"savebox", box:payload, deviceId:pkDeviceId()};
+    if(b.rev!=null&&b.rev!=="") body.expectedRev=b.rev;
+    return apiPost(body);
+  }).then(function(res){
+    if(!res||!res.ok||!res.box){
+      if(res&&res.error==="STALE_VERSION"){
+        pkApplyServerBox(b, res.box, true);
+        throw new Error("STALE_VERSION — มีเครื่องอื่นบันทึกก่อน ตรวจรายการแล้วบันทึกใหม่");
+      }
+      throw new Error((res&&res.error)||"save failed");
+    }
     pkClearMirrorDraft(b);
     delete PK.drafts[b.id]; if(PK.cur===b.id) PK.cur="";
     pkPersist();
     rememberBox(res.box);
     pkHideSnackbar();
+    if(b.from) pkFetchCounterPacked(b.from, "", true);
     toast("บันทึกแล้ว · Saved "+res.box.boxNo,"ok");
     try{pkShowLabel(res.box,{mode:boxCountOf(res.box)>1?"all":"one",seq:1});}catch(e){pkShow("home");}
   }).catch(function(err){
