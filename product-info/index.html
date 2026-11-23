@@ -756,7 +756,7 @@ body.typing .tabbar{display:none}
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION on every release so GitHub Pages clients drop stale modules -->
 <script type="module" src="lib/catalog-core.mjs?v=20261123a"></script>
 <script>
-var APP_VER="20261123a";
+var APP_VER="20261123b";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -2313,6 +2313,22 @@ function pkPendingOpsFor(boxNo){
 function pkPendingOpsCount(boxNo){
   return pkPendingOpsFor(boxNo).length;
 }
+function pkLineKeyOf(line){
+  if(!line) return "";
+  if(window.CatalogCore&&CatalogCore.packingLineKey) return CatalogCore.packingLineKey(line);
+  if(line.k) return String(line.k);
+  if(line.sku) return "S:"+String(line.sku).toUpperCase();
+  return "N:"+(norm(line.ean)||norm(line.desc)).toUpperCase();
+}
+function pkSameBoxNo(a,b){
+  return String(a||"").trim().toUpperCase()===String(b||"").trim().toUpperCase();
+}
+function pkDropOpsForBox(boxNo){
+  pkLoadOpsQueue();
+  var key=String(boxNo||"").trim().toUpperCase();
+  PK_DELTA.queue=(PK_DELTA.queue||[]).filter(function(q){return String(q.boxNo||"").toUpperCase()!==key;});
+  pkSaveOpsQueue();
+}
 function pkEnqueueDelta(b, line, deltaQty){
   if(!b||!b.boxNo||!line||!deltaQty) return null;
   pkLoadOpsQueue();
@@ -2322,7 +2338,8 @@ function pkEnqueueDelta(b, line, deltaQty){
         deviceId:pkDeviceId(),
         clientTs:Date.now(),
         boxNo:b.boxNo,
-        lineKey:line.k||(line.sku?("S:"+String(line.sku).toUpperCase()):""),
+        lineKey:pkLineKeyOf(line),
+        k:line.k||"",
         sku:line.sku||"",
         ean:line.ean||"",
         desc:line.desc||"",
@@ -2343,6 +2360,20 @@ function pkEnqueueDelta(b, line, deltaQty){
   pkUpdatePeerBanner();
   return op;
 }
+/** Seed local excess qty as deltas once per draft (before adopting server lines). */
+function pkSeedLocalDeltas(b, serverBox){
+  if(!b||!b.boxNo||b.deltaSeeded) return 0;
+  var serverLines=(serverBox&&(serverBox.items||serverBox.lines))||[];
+  var partials=window.CatalogCore&&CatalogCore.packingSeedDeltaPartials
+    ? CatalogCore.packingSeedDeltaPartials(b.lines||[], serverLines)
+    : [];
+  var n=0;
+  (partials||[]).forEach(function(p){
+    if(pkEnqueueDelta(b, p, p.deltaQty)) n++;
+  });
+  b.deltaSeeded=true;
+  return n;
+}
 function pkFlushPackOps(boxNo){
   pkLoadOpsQueue();
   boxNo=String(boxNo||(curBox()&&curBox().boxNo)||"").trim();
@@ -2358,8 +2389,15 @@ function pkFlushPackOps(boxNo){
     PK_DELTA.flushing=false;
     if(pkSohIsUnknownApi(res)){ PK_DELTA.ok=false; pkUpdatePeerBanner(); return null; }
     if(!res||!res.ok){
-      if(res&&res.error==="STALE_VERSION"){ pkApplyServerBox(curBox(), res.box); }
-      throw new Error((res&&res.error)||"flush fail");
+      if(res&&res.error==="STALE_VERSION"){
+        if(curBox()&&pkSameBoxNo(curBox().boxNo, boxNo)) pkApplyServerBox(curBox(), res.box, true);
+        throw new Error((res&&res.error)||"flush fail");
+      }
+      // Deleted / missing box — drop ops so we do not retry forever
+      pkDropOpsForBox(boxNo);
+      toast("กล่องถูกลบหรือไม่พบ ยกเลิกการซิงก์ · Box missing/deleted, sync dropped","err");
+      pkUpdatePeerBanner();
+      return null;
     }
     PK_DELTA.ok=true;
     var sent={}; ops.forEach(function(o){if(o.opId) sent[o.opId]=1;});
@@ -2369,8 +2407,11 @@ function pkFlushPackOps(boxNo){
       return q;
     }).filter(function(q){return q.ops&&q.ops.length;});
     pkSaveOpsQueue();
-    if(res.box) pkApplyServerBox(curBox(), res.box, true);
-    else if(res.rev!=null&&curBox()&&curBox().boxNo===boxNo) curBox().rev=res.rev;
+    if(curBox()&&pkSameBoxNo(curBox().boxNo, boxNo)){
+      if(res.box) pkApplyServerBox(curBox(), res.box, true);
+      else if(res.rev!=null) curBox().rev=res.rev;
+      if(res.peers) curBox().peers=res.peers;
+    }
     pkUpdatePeerBanner();
     return res;
   }).catch(function(err){
@@ -2379,11 +2420,29 @@ function pkFlushPackOps(boxNo){
     return null;
   });
 }
+function pkNormalizeServerBox(res){
+  if(!res) return null;
+  var box=res.box||null;
+  if(!box&&(res.supportsDelta||res.rev!=null||res.peers)){
+    box={};
+  }
+  if(!box) return null;
+  if(box.supportsDelta==null&&res.supportsDelta!=null) box.supportsDelta=res.supportsDelta;
+  if(box.rev==null&&res.rev!=null) box.rev=res.rev;
+  if(!box.peers&&res.peers) box.peers=res.peers;
+  return box;
+}
 function pkApplyServerBox(b, serverBox, keepPending){
-  if(!b||!serverBox) return;
+  if(!b||!serverBox) return false;
+  if(serverBox.peers) b.peers=serverBox.peers;
+  var canApply=window.CatalogCore&&CatalogCore.packingShouldApplyServerBox
+    ? CatalogCore.packingShouldApplyServerBox(serverBox, b.rev)
+    : !!serverBox.supportsDelta;
+  if(!canApply) return false;
+  PK_DELTA.ok=true;
+  // First contact with a delta-capable server: seed local excess before adopting
+  if(b.boxNo&&!b.deltaSeeded) pkSeedLocalDeltas(b, serverBox);
   if(serverBox.rev!=null) b.rev=serverBox.rev;
-  b.peers=serverBox.peers||[];
-  if(serverBox.supportsDelta) PK_DELTA.ok=true;
   var serverLines=serverBox.items||serverBox.lines||[];
   var pending=keepPending?pkPendingOpsFor(b.boxNo):[];
   var merged=window.CatalogCore&&CatalogCore.applyPackingOps
@@ -2391,7 +2450,7 @@ function pkApplyServerBox(b, serverBox, keepPending){
     : {lines:serverLines};
   b.lines=(merged.lines||[]).map(function(l){
     return {
-      k:l.k||(l.sku?("S:"+String(l.sku).toUpperCase()):("N:"+(norm(l.ean)||norm(l.desc)).toUpperCase())),
+      k:pkLineKeyOf(l),
       sku:l.sku||"", ean:l.ean||"", desc:l.desc||"", brand:l.brand||"",
       qty:Number(l.qty)||0, flag:l.flag||"", boxSeq:boxSeqOf(l),
       lastDeviceId:l.lastDeviceId||"", lastOpAt:l.lastOpAt||""
@@ -2401,6 +2460,7 @@ function pkApplyServerBox(b, serverBox, keepPending){
   normalizeDoc(b);
   pkPersist();
   if(pkPackBoxActive()&&curBox()&&curBox().id===b.id) pkRenderBox();
+  return true;
 }
 function pkUpdatePeerBanner(){
   var el=$("pk-peer"); if(!el) return;
@@ -2428,18 +2488,20 @@ function pkPullBoxSync(){
   if(document.hidden) return;
   var no=b.boxNo;
   apiGet({api:"box", no:no}).then(function(res){
-    if(!res||!res.ok||!res.box) return;
-    if(curBox()&&curBox().boxNo===no){
-      pkApplyServerBox(curBox(), res.box, true);
-      if(res.box.peers) curBox().peers=res.box.peers;
-      pkUpdatePeerBanner();
-    }
+    if(!res||!res.ok) return;
+    if(!(curBox()&&pkSameBoxNo(curBox().boxNo, no))) return;
+    var box=pkNormalizeServerBox(res)||res.box;
+    if(!box) return;
+    // Peers may update even when we skip line adopt (v6 / older rev)
+    if(box.peers) curBox().peers=box.peers;
+    pkApplyServerBox(curBox(), box, true);
+    pkUpdatePeerBanner();
   }).catch(function(){});
   if(b.from) pkFetchCounterPacked(b.from, b.boxNo||"", true).then(function(){ pkRefreshCounterPackedUi(); });
   apiPost({action:"packpresence", boxNo:no, deviceId:pkDeviceId(), label:packedByName()}).then(function(res){
-    if(res&&res.box&&curBox()&&curBox().boxNo===no){
-      curBox().peers=res.box.peers||res.peers||[];
-      if(res.box.rev!=null) curBox().rev=res.box.rev;
+    // packpresence returns {ok,peers} only — never touch rev
+    if(res&&res.ok&&curBox()&&pkSameBoxNo(curBox().boxNo, no)){
+      curBox().peers=res.peers||[];
       pkUpdatePeerBanner();
     }
   }).catch(function(){});
@@ -3983,6 +4045,14 @@ function pkReserve(b){
     b.reserving=false;
     if(res&&res.ok&&res.box&&res.box.boxNo&&PK.drafts[b.id]===b&&!b.boxNo){
       b.boxNo=res.box.boxNo; b.status=res.box.status||"Open"; if(res.box.created) b.created=res.box.created;
+      if(res.box.rev!=null) b.rev=res.box.rev;
+      // Lines scanned before boxNo arrived were never enqueued — seed them now
+      if((b.lines||[]).length){
+        pkSeedLocalDeltas(b, {items:[], lines:[], supportsDelta:true, rev:res.box.rev});
+        pkFlushPackOps(b.boxNo);
+      }else{
+        b.deltaSeeded=true;
+      }
       pkPersist();
       toast("เลขกล่อง "+b.boxNo,"ok");
     }
@@ -4365,7 +4435,7 @@ function pkDoSaveBox(){
   }).then(function(res){
     if(!res||!res.ok||!res.box){
       if(res&&res.error==="STALE_VERSION"){
-        pkApplyServerBox(b, res.box, true);
+        if(curBox()&&curBox().id===b.id) pkApplyServerBox(b, res.box, true);
         throw new Error("STALE_VERSION — มีเครื่องอื่นบันทึกก่อน ตรวจรายการแล้วบันทึกใหม่");
       }
       throw new Error((res&&res.error)||"save failed");
@@ -4487,9 +4557,12 @@ function pkEditBox(b){
   if(!d){
     d={id:b.clientId||uid(),boxNo:b.boxNo,status:b.status,created:b.created,createdTs:0,shipTo:b.shipTo,from:b.from||"",refNo:b.refNo,packedBy:b.packedBy,note:b.note,
        reopened:b.status==="Closed"||b.status==="Edited",dirty:false,boxCount:boxCountOf(b),activeBox:activeBoxOf(b),
-       lines:(b.items||b.lines||[]).map(function(l){return {k:l.sku?"S:"+String(l.sku).toUpperCase():"N:"+(norm(l.ean)||norm(l.desc)).toUpperCase(),sku:l.sku,ean:l.ean,desc:l.desc,brand:l.brand,qty:Number(l.qty)||0,flag:l.flag||"",boxSeq:boxSeqOf(l)};})};
+       rev:b.rev!=null?b.rev:undefined, deltaSeeded:true,
+       lines:(b.items||b.lines||[]).map(function(l){return {k:pkLineKeyOf(l),sku:l.sku,ean:l.ean,desc:l.desc,brand:l.brand,qty:Number(l.qty)||0,flag:l.flag||"",boxSeq:boxSeqOf(l)};})};
     if(PK.drafts[d.id]) d.id=uid();
     PK.drafts[d.id]=d;
+  }else if(b.rev!=null){
+    d.rev=b.rev;
   }
   PK.cur=d.id; pkPersist(); pkShow("box");
 }

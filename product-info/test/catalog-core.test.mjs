@@ -46,6 +46,9 @@ import {
   packingActivePeers,
   packingPeerBannerText,
   buildPackingDeltaOp,
+  packingLineKey,
+  packingShouldApplyServerBox,
+  packingSeedDeltaPartials,
   formatPackingSohLineDetailed,
   packingSohLineInfoDetailed,
   packingCounterPackedMap,
@@ -624,6 +627,64 @@ test("applyPackingOps: concurrent deltas merge; duplicate opId ignored; negative
   assert.equal(peers[0].deviceId, "other");
   assert.equal(packingPeerBannerText(peers), "อีก 1 เครื่องกำลังแพ็คกล่องนี้");
   assert.equal(packingPeerBannerText([{ deviceId: "a" }, { deviceId: "b" }]), "อีก 2 เครื่องกำลังแพ็คกล่องนี้");
+});
+
+test("packingShouldApplyServerBox: supportsDelta gate + ignore older rev", () => {
+  assert.equal(packingShouldApplyServerBox(null, 1), false);
+  assert.equal(packingShouldApplyServerBox({}, 1), false);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: false, rev: 5 }, 1), false);
+  // v6-shaped box (no supportsDelta) must not wipe local lines
+  assert.equal(packingShouldApplyServerBox({ rev: 1, items: [] }, 0), false);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 3 }, 5), false); // server older
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 5 }, 5), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 6 }, 5), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true }, null), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 1 }, null), true);
+});
+
+test("packingLineKey: prefer k; N: strips whitespace like index.html norm", () => {
+  assert.equal(packingLineKey({ k: "S:ABC" }), "S:ABC");
+  assert.equal(packingLineKey({ sku: "h0d701" }), "S:H0D701");
+  assert.equal(packingLineKey({ ean: " 3700 1350 21143 " }), "N:3700135021143");
+  assert.equal(packingLineKey({ desc: "foo  bar" }), "N:FOOBAR");
+  // server k wins even if sku/ean would differ
+  assert.equal(packingLineKey({ k: "N:SERVER", sku: "X", ean: "1" }), "N:SERVER");
+});
+
+test("packingSeedDeltaPartials: local excess only; no wipe when server empty", () => {
+  var local = [
+    { sku: "A", qty: 3, boxSeq: 1, k: "S:A" },
+    { ean: "12 34", desc: "no sku", qty: 2, boxSeq: 1 },
+  ];
+  var empty = packingSeedDeltaPartials(local, []);
+  assert.equal(empty.length, 2);
+  var byKey = Object.fromEntries(empty.map((p) => [p.lineKey, p.deltaQty]));
+  assert.equal(byKey["S:A"], 3);
+  assert.equal(byKey["N:1234"], 2); // whitespace stripped
+
+  var partialServer = packingSeedDeltaPartials(local, [
+    { sku: "A", qty: 1, boxSeq: 1, k: "S:A" },
+  ]);
+  byKey = Object.fromEntries(partialServer.map((p) => [p.lineKey, p.deltaQty]));
+  assert.equal(byKey["S:A"], 2); // 3-1
+  assert.equal(byKey["N:1234"], 2);
+
+  // local already covered — no seed (would double-count)
+  assert.deepEqual(
+    packingSeedDeltaPartials(
+      [{ sku: "A", qty: 1, boxSeq: 1, k: "S:A" }],
+      [{ sku: "A", qty: 1, boxSeq: 1, k: "S:A" }]
+    ),
+    []
+  );
+
+  // apply seed on empty server recovers local qty
+  var ops = empty.map((p, i) =>
+    buildPackingDeltaOp(Object.assign({}, p, { opId: "seed-" + i, deviceId: "me", boxNo: "PK-1" }))
+  );
+  var merged = applyPackingOps([], ops);
+  assert.equal(merged.lines.find((l) => l.k === "S:A" || l.sku === "A").qty, 3);
+  assert.equal(merged.lines.find((l) => String(l.k).indexOf("N:") === 0).qty, 2);
 });
 
 test("formatPackingSohLineDetailed counter-wide + this-box; over in red", () => {

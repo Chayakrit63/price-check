@@ -26,4 +26,12 @@ Until backend is deployed, the app **falls back** to this-box-only SOH text and 
 
 ## Version bump
 
-`APP_VER` / `CatalogCore.VERSION` = **20261123a** (cache-bust).
+`APP_VER` / `CatalogCore.VERSION` = **20261123b** (cache-bust).
+
+## Frontend safety (v6 → v7 cutover)
+
+- Poll/`api=box` only replaces local lines when `supportsDelta` is true (v6 empty draft responses must not wipe scans).
+- Ignore server `rev` older than local (slow GET after flush).
+- `packpresence` updates peers only — never `rev`.
+- On first delta contact / after `newbox` assigns `boxNo`, seed `(local − server)` qty as append ops before adopting server lines.
+- `appendpackops` `ok:false` (deleted/missing) drops that box’s queued ops and toasts; does not retry forever.

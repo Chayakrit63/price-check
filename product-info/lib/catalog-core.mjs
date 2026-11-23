@@ -2,7 +2,7 @@
  * Shared catalog classifier + search (Node tests + browser via window.CatalogCore).
  * Bump VERSION in lockstep with APP_VER in index.html (cache-bust query on the module URL).
  */
-export var VERSION = "20261123a";
+export var VERSION = "20261123b";
 
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
@@ -1231,7 +1231,11 @@ export function buildCounterCheckExcelData(opts) {
   };
 }
 
-/** Line identity key used in packing drafts (S:SKU or N:…). */
+/**
+ * Line identity key used in packing drafts (S:SKU or N:…).
+ * Prefer server-provided `k` when present. N: keys match index.html `norm`
+ * (trim + strip all whitespace) then uppercase — not trim-only.
+ */
 export function packingLineKey(line) {
   if (!line) return "";
   if (line.k) return String(line.k);
@@ -1239,10 +1243,86 @@ export function packingLineKey(line) {
     .trim()
     .toUpperCase();
   if (sku) return "S:" + sku;
-  var raw = String(line.ean || line.barcode || line.desc || "")
-    .trim()
-    .toUpperCase();
+  var raw = norm(line.ean || line.barcode || line.desc || "").toUpperCase();
   return raw ? "N:" + raw : "";
+}
+
+/**
+ * Whether a poll/flush response may replace local packing lines.
+ * Requires supportsDelta; rejects server rev older than local (slow GET after flush).
+ */
+export function packingShouldApplyServerBox(serverBox, localRev) {
+  if (!serverBox || !serverBox.supportsDelta) return false;
+  var srvRev = serverBox.rev;
+  if (
+    localRev != null &&
+    localRev !== "" &&
+    srvRev != null &&
+    srvRev !== "" &&
+    isFinite(Number(localRev)) &&
+    isFinite(Number(srvRev)) &&
+    Number(srvRev) < Number(localRev)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Positive qty diffs (local − server) as seed delta partials (no opId).
+ * Used when a boxNo is first assigned or on first contact with a delta-capable server
+ * so in-progress draft lines are not wiped by an empty/partial server box.
+ */
+export function packingSeedDeltaPartials(localLines, serverLines) {
+  function qtyByMapKey(lines) {
+    var m = {};
+    (lines || []).forEach(function (l) {
+      if (!l) return;
+      var mk = packingLineMapKey(l);
+      if (!mk || mk.charAt(0) === "|") return;
+      var q = Number(l.qty) || 0;
+      if (q <= 0) return;
+      m[mk] = (m[mk] || 0) + q;
+    });
+    return m;
+  }
+  function metaByMapKey(lines) {
+    var m = {};
+    (lines || []).forEach(function (l) {
+      if (!l) return;
+      var mk = packingLineMapKey(l);
+      if (!mk || mk.charAt(0) === "|") return;
+      if (!m[mk]) m[mk] = l;
+    });
+    return m;
+  }
+  var localQ = qtyByMapKey(localLines);
+  var serverQ = qtyByMapKey(serverLines);
+  var meta = metaByMapKey(localLines);
+  var out = [];
+  Object.keys(localQ).forEach(function (mk) {
+    var diff = localQ[mk] - (serverQ[mk] || 0);
+    if (!(diff > 0)) return;
+    var l = meta[mk] || {};
+    var lineKey = packingLineKey(l);
+    if (!lineKey) {
+      var pipe = mk.indexOf("|");
+      lineKey = pipe >= 0 ? mk.slice(0, pipe) : mk;
+    }
+    var boxSeq = Math.round(Number(l.boxSeq != null ? l.boxSeq : l.box) || 1) || 1;
+    out.push({
+      lineKey: lineKey,
+      k: lineKey,
+      sku: String(l.sku || ""),
+      ean: String(l.ean || l.barcode || ""),
+      desc: String(l.desc || ""),
+      brand: String(l.brand || ""),
+      flag: String(l.flag || ""),
+      boxSeq: boxSeq,
+      deltaQty: diff,
+    });
+  });
+  return out;
 }
 
 /** Map key includes boxSeq so multi-box PKs stay separate. */
@@ -1566,6 +1646,8 @@ if (typeof window !== "undefined") {
     buildCounterCheckExcelData: buildCounterCheckExcelData,
     packingLineKey: packingLineKey,
     packingLineMapKey: packingLineMapKey,
+    packingShouldApplyServerBox: packingShouldApplyServerBox,
+    packingSeedDeltaPartials: packingSeedDeltaPartials,
     applyPackingOps: applyPackingOps,
     packingStaleVersion: packingStaleVersion,
     packingActivePeers: packingActivePeers,
