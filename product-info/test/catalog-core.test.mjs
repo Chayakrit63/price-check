@@ -41,6 +41,19 @@ import {
   packingCounterCheckShortName,
   packingCounterCheckExportStamp,
   buildCounterCheckExcelData,
+  applyPackingOps,
+  packingStaleVersion,
+  packingActivePeers,
+  packingPeerBannerText,
+  buildPackingDeltaOp,
+  packingLineKey,
+  packingShouldApplyServerBox,
+  packingSeedDeltaPartials,
+  formatPackingSohLineDetailed,
+  packingSohLineInfoDetailed,
+  packingCounterPackedMap,
+  packingMergeCounterPacked,
+  packingSohSummaryFromPacked,
 } from "../lib/catalog-core.mjs";
 
 test("CatalogCore VERSION is a non-empty release id", () => {
@@ -48,6 +61,8 @@ test("CatalogCore VERSION is a non-empty release id", () => {
   assert.ok(VERSION.length >= 4);
   assert.equal(typeof packingCounterCheck, "function");
   assert.equal(typeof buildCounterCheckExcelData, "function");
+  assert.equal(typeof applyPackingOps, "function");
+  assert.equal(typeof formatPackingSohLineDetailed, "function");
 });
 
 const SAMPLE_ROWS = [
@@ -312,7 +327,7 @@ test("formatPackingSohLine remaining / done / over", () => {
   var over = formatPackingSohLine(3, 5);
   assert.equal(over.status, "over");
   assert.equal(over.over, 2);
-  assert.equal(over.left, 0);
+  assert.equal(over.left, -2); // remaining can go negative when over-packed
   assert.equal(over.text, "POS 3 · แพ็คแล้ว 5 · เกิน 2");
   assert.equal(over.className, "over");
 
@@ -530,4 +545,189 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   var statusNames = data.sheets.slice(3).map((s) => s.name);
   assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ"]);
   assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
+});
+test("applyPackingOps: concurrent deltas merge; duplicate opId ignored; negative deltas", () => {
+  var base = [
+    { sku: "A", ean: "1", desc: "Item A", brand: "X", qty: 2, boxSeq: 1, k: "S:A" },
+  ];
+  var opA = buildPackingDeltaOp({
+    opId: "dev1-1",
+    deviceId: "dev1",
+    sku: "A",
+    ean: "1",
+    desc: "Item A",
+    deltaQty: 3,
+    boxSeq: 1,
+  });
+  var opB = buildPackingDeltaOp({
+    opId: "dev2-1",
+    deviceId: "dev2",
+    sku: "B",
+    ean: "2",
+    desc: "Item B",
+    brand: "Y",
+    deltaQty: 5,
+    boxSeq: 1,
+  });
+  var merged = applyPackingOps(base, [opA, opB]);
+  assert.equal(merged.skippedDup.length, 0);
+  assert.equal(merged.applied.length, 2);
+  var bySku = Object.fromEntries(merged.lines.map((l) => [l.sku, l.qty]));
+  assert.equal(bySku.A, 5);
+  assert.equal(bySku.B, 5);
+
+  // Device A retries same opId + another device adds more — no double count
+  // (server/client must pass already-seen opIds when replaying)
+  var again = applyPackingOps(
+    merged.lines,
+    [
+      opA,
+      buildPackingDeltaOp({
+        opId: "dev2-2",
+        deviceId: "dev2",
+        sku: "A",
+        deltaQty: 1,
+        boxSeq: 1,
+        lineKey: "S:A",
+      }),
+    ],
+    { seenOpIds: merged.seenOpIds }
+  );
+  assert.deepEqual(again.skippedDup, ["dev1-1"]);
+  bySku = Object.fromEntries(again.lines.map((l) => [l.sku, l.qty]));
+  assert.equal(bySku.A, 6);
+
+  var removed = applyPackingOps(again.lines, [
+    buildPackingDeltaOp({
+      opId: "dev1-rm",
+      deviceId: "dev1",
+      sku: "B",
+      deltaQty: -5,
+      boxSeq: 1,
+      lineKey: "S:B",
+    }),
+  ]);
+  assert.ok(!removed.lines.find((l) => l.sku === "B"));
+  assert.equal(removed.lines.find((l) => l.sku === "A").qty, 6);
+
+  assert.equal(packingStaleVersion(3, 4), true);
+  assert.equal(packingStaleVersion(4, 4), false);
+  assert.equal(packingStaleVersion(null, 4), false);
+  var peers = packingActivePeers(
+    [
+      { deviceId: "me", lastSeen: 1000 },
+      { deviceId: "other", lastSeen: 900 },
+      { deviceId: "stale", lastSeen: 100 },
+    ],
+    "me",
+    1000,
+    200
+  );
+  assert.equal(peers.length, 1);
+  assert.equal(peers[0].deviceId, "other");
+  assert.equal(packingPeerBannerText(peers), "อีก 1 เครื่องกำลังแพ็คกล่องนี้");
+  assert.equal(packingPeerBannerText([{ deviceId: "a" }, { deviceId: "b" }]), "อีก 2 เครื่องกำลังแพ็คกล่องนี้");
+});
+
+test("packingShouldApplyServerBox: supportsDelta gate + ignore older rev", () => {
+  assert.equal(packingShouldApplyServerBox(null, 1), false);
+  assert.equal(packingShouldApplyServerBox({}, 1), false);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: false, rev: 5 }, 1), false);
+  // v6-shaped box (no supportsDelta) must not wipe local lines
+  assert.equal(packingShouldApplyServerBox({ rev: 1, items: [] }, 0), false);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 3 }, 5), false); // server older
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 5 }, 5), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 6 }, 5), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true }, null), true);
+  assert.equal(packingShouldApplyServerBox({ supportsDelta: true, rev: 1 }, null), true);
+});
+
+test("packingLineKey: prefer k; N: strips whitespace like index.html norm", () => {
+  assert.equal(packingLineKey({ k: "S:ABC" }), "S:ABC");
+  assert.equal(packingLineKey({ sku: "h0d701" }), "S:H0D701");
+  assert.equal(packingLineKey({ ean: " 3700 1350 21143 " }), "N:3700135021143");
+  assert.equal(packingLineKey({ desc: "foo  bar" }), "N:FOOBAR");
+  // server k wins even if sku/ean would differ
+  assert.equal(packingLineKey({ k: "N:SERVER", sku: "X", ean: "1" }), "N:SERVER");
+});
+
+test("packingSeedDeltaPartials: local excess only; no wipe when server empty", () => {
+  var local = [
+    { sku: "A", qty: 3, boxSeq: 1, k: "S:A" },
+    { ean: "12 34", desc: "no sku", qty: 2, boxSeq: 1 },
+  ];
+  var empty = packingSeedDeltaPartials(local, []);
+  assert.equal(empty.length, 2);
+  var byKey = Object.fromEntries(empty.map((p) => [p.lineKey, p.deltaQty]));
+  assert.equal(byKey["S:A"], 3);
+  assert.equal(byKey["N:1234"], 2); // whitespace stripped
+
+  var partialServer = packingSeedDeltaPartials(local, [
+    { sku: "A", qty: 1, boxSeq: 1, k: "S:A" },
+  ]);
+  byKey = Object.fromEntries(partialServer.map((p) => [p.lineKey, p.deltaQty]));
+  assert.equal(byKey["S:A"], 2); // 3-1
+  assert.equal(byKey["N:1234"], 2);
+
+  // local already covered — no seed (would double-count)
+  assert.deepEqual(
+    packingSeedDeltaPartials(
+      [{ sku: "A", qty: 1, boxSeq: 1, k: "S:A" }],
+      [{ sku: "A", qty: 1, boxSeq: 1, k: "S:A" }]
+    ),
+    []
+  );
+
+  // apply seed on empty server recovers local qty
+  var ops = empty.map((p, i) =>
+    buildPackingDeltaOp(Object.assign({}, p, { opId: "seed-" + i, deviceId: "me", boxNo: "PK-1" }))
+  );
+  var merged = applyPackingOps([], ops);
+  assert.equal(merged.lines.find((l) => l.k === "S:A" || l.sku === "A").qty, 3);
+  assert.equal(merged.lines.find((l) => String(l.k).indexOf("N:") === 0).qty, 2);
+});
+
+test("formatPackingSohLineDetailed counter-wide + this-box; over in red", () => {
+  var mid = formatPackingSohLineDetailed(6, 3, 1);
+  assert.equal(mid.status, "ok");
+  assert.equal(mid.left, 3);
+  assert.equal(mid.text, "POS 6 · แพ็คแล้ว 3 (กล่องนี้ 1) · เหลือ 3");
+  assert.equal(mid.className, "ok");
+
+  var over = formatPackingSohLineDetailed(6, 7, 2);
+  assert.equal(over.status, "over");
+  assert.equal(over.over, 1);
+  assert.equal(over.left, -1);
+  assert.equal(over.className, "over");
+  assert.match(over.text, /เกิน 1/);
+  assert.match(over.text, /กล่องนี้ 2/);
+
+  var info = packingSohLineInfoDetailed(
+    "A",
+    3,
+    1,
+    sohMapFromRows([{ sku: "A", qty: 6, desc: "A" }])
+  );
+  assert.equal(info.text, "POS 6 · แพ็คแล้ว 3 (กล่องนี้ 1) · เหลือ 3");
+
+  // other PKs + this draft
+  var other = packingCounterPackedMap([
+    { boxNo: "PK-1", lines: [{ sku: "A", qty: 2 }] },
+    { boxNo: "PK-2", lines: [{ sku: "A", qty: 1 }, { sku: "B", qty: 4 }] },
+  ]);
+  assert.deepEqual(other, { A: 3, B: 4 });
+  var all = packingMergeCounterPacked(other, { A: 1, C: 2 });
+  assert.deepEqual(all, { A: 4, B: 4, C: 2 });
+  var sum = packingSohSummaryFromPacked(
+    sohMapFromRows([
+      { sku: "A", qty: 6 },
+      { sku: "B", qty: 4 },
+      { sku: "C", qty: 1 },
+    ]),
+    all
+  );
+  assert.equal(sum.packedPcs, 10); // A4+B4+C2
+  assert.equal(sum.leftoverSku, 1); // A left 2
+  assert.equal(sum.doneSku, 2); // B exact + C over counts as done (>=)
+  assert.equal(sum.overSku, 1); // C 2>1
 });

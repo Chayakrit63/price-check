@@ -2,7 +2,7 @@
  * Shared catalog classifier + search (Node tests + browser via window.CatalogCore).
  * Bump VERSION in lockstep with APP_VER in index.html (cache-bust query on the module URL).
  */
-export var VERSION = "20261122e";
+export var VERSION = "20261123b";
 
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
@@ -581,17 +581,38 @@ export function sohMapFromRows(rows) {
  * @returns {{ status: 'ok'|'done'|'over', soh: number, packed: number, left: number, over: number, text: string, className: string }}
  */
 export function formatPackingSohLine(sohQty, packedQty) {
+  return formatPackingSohLineDetailed(sohQty, packedQty, null);
+}
+
+/**
+ * Line SOH text. When packedThis is a number, show counter-wide packed + this-box qty:
+ *   POS 6 · แพ็คแล้ว 3 (กล่องนี้ 1) · เหลือ 3
+ * Over-pack (packedAll > soh) uses className "over" (red) and เกิน.
+ */
+export function formatPackingSohLineDetailed(sohQty, packedAllQty, packedThisQty) {
   var soh = Math.max(0, Number(sohQty) || 0);
-  var packed = Math.max(0, Number(packedQty) || 0);
+  var packed = Math.max(0, Number(packedAllQty) || 0);
+  var hasThis = packedThisQty != null && packedThisQty !== "";
+  var packedThis = hasThis ? Math.max(0, Number(packedThisQty) || 0) : null;
+  var thisBit =
+    packedThis != null ? " (กล่องนี้ " + packedThis + ")" : "";
   if (packed > soh) {
     var over = packed - soh;
     return {
       status: "over",
       soh: soh,
       packed: packed,
-      left: 0,
+      packedThis: packedThis,
+      left: soh - packed,
       over: over,
-      text: "POS " + soh + " · แพ็คแล้ว " + packed + " · เกิน " + over,
+      text:
+        "POS " +
+        soh +
+        " · แพ็คแล้ว " +
+        packed +
+        thisBit +
+        " · เกิน " +
+        over,
       className: "over",
     };
   }
@@ -601,9 +622,16 @@ export function formatPackingSohLine(sohQty, packedQty) {
       status: "done",
       soh: soh,
       packed: packed,
+      packedThis: packedThis,
       left: 0,
       over: 0,
-      text: "✓ POS " + soh + " · แพ็คแล้ว " + packed + " · เหลือ 0",
+      text:
+        "✓ POS " +
+        soh +
+        " · แพ็คแล้ว " +
+        packed +
+        thisBit +
+        " · เหลือ 0",
       className: "done",
     };
   }
@@ -611,9 +639,17 @@ export function formatPackingSohLine(sohQty, packedQty) {
     status: "ok",
     soh: soh,
     packed: packed,
+    packedThis: packedThis,
     left: left,
     over: 0,
-    text: "POS " + soh + " · แพ็คแล้ว " + packed + " · เหลือ " + left,
+    text:
+      "POS " +
+      soh +
+      " · แพ็คแล้ว " +
+      packed +
+      thisBit +
+      " · เหลือ " +
+      left,
     className: "ok",
   };
 }
@@ -623,17 +659,32 @@ export function formatPackingSohLine(sohQty, packedQty) {
  * missing → yellow warning text; otherwise formatPackingSohLine.
  */
 export function packingSohLineInfo(sku, packedQty, sohMap) {
+  return packingSohLineInfoDetailed(sku, packedQty, null, sohMap);
+}
+
+/**
+ * @param {string} sku
+ * @param {number} packedAllQty - packed across counter (all PKs + draft)
+ * @param {number|null} packedThisQty - packed in open PK only (optional)
+ * @param {object} sohMap
+ */
+export function packingSohLineInfoDetailed(sku, packedAllQty, packedThisQty, sohMap) {
   if (!sohMap) return null;
   var k = String(sku || "")
     .trim()
     .toUpperCase();
   if (!k) return null;
+  var packed = Math.max(0, Number(packedAllQty) || 0);
   var rec = sohMap[k];
   if (!rec) {
     return {
       status: "missing",
       soh: 0,
-      packed: Math.max(0, Number(packedQty) || 0),
+      packed: packed,
+      packedThis:
+        packedThisQty != null && packedThisQty !== ""
+          ? Math.max(0, Number(packedThisQty) || 0)
+          : null,
       left: 0,
       over: 0,
       text: "⚠ ไม่มีใน POS ของ counter นี้",
@@ -641,7 +692,46 @@ export function packingSohLineInfo(sku, packedQty, sohMap) {
       warn: "ไม่มีใน POS ของ counter นี้",
     };
   }
-  return formatPackingSohLine(rec.qty, packedQty);
+  return formatPackingSohLineDetailed(rec.qty, packed, packedThisQty);
+}
+
+/** Flatten many PK bundles → { SKU: qty }. Same aggregation as packingCounterCheck. */
+export function packingCounterPackedMap(pkBundles) {
+  var packed = {};
+  (pkBundles || []).forEach(function (bundle) {
+    var part = packingSkuQtyMap(bundle && bundle.lines ? bundle.lines : bundle);
+    Object.keys(part).forEach(function (sku) {
+      packed[sku] = (packed[sku] || 0) + part[sku];
+    });
+  });
+  return packed;
+}
+
+/**
+ * Merge server counter totals with the open draft:
+ * packedAll = otherPksMap + thisBoxLocalMap
+ * (otherPksMap should exclude the open boxNo's saved lines).
+ */
+export function packingMergeCounterPacked(otherPksMap, thisBoxLocalMap) {
+  var out = {};
+  Object.keys(otherPksMap || {}).forEach(function (sku) {
+    out[sku] = Number(otherPksMap[sku]) || 0;
+  });
+  Object.keys(thisBoxLocalMap || {}).forEach(function (sku) {
+    out[sku] = (out[sku] || 0) + (Number(thisBoxLocalMap[sku]) || 0);
+  });
+  return out;
+}
+
+/** Summary from an already-aggregated packed map (counter-wide). */
+export function packingSohSummaryFromPacked(sohMap, packedMap) {
+  if (!sohMap) return null;
+  return packingSohSummary(
+    Object.keys(packedMap || {}).map(function (sku) {
+      return { sku: sku, qty: packedMap[sku] };
+    }),
+    sohMap
+  );
 }
 
 /** Short badge for picker/suggestions: "POS 57" or "" if unknown/no SOH. */
@@ -1142,6 +1232,280 @@ export function buildCounterCheckExcelData(opts) {
 }
 
 /**
+ * Line identity key used in packing drafts (S:SKU or N:…).
+ * Prefer server-provided `k` when present. N: keys match index.html `norm`
+ * (trim + strip all whitespace) then uppercase — not trim-only.
+ */
+export function packingLineKey(line) {
+  if (!line) return "";
+  if (line.k) return String(line.k);
+  var sku = String(line.sku || "")
+    .trim()
+    .toUpperCase();
+  if (sku) return "S:" + sku;
+  var raw = norm(line.ean || line.barcode || line.desc || "").toUpperCase();
+  return raw ? "N:" + raw : "";
+}
+
+/**
+ * Whether a poll/flush response may replace local packing lines.
+ * Requires supportsDelta; rejects server rev older than local (slow GET after flush).
+ */
+export function packingShouldApplyServerBox(serverBox, localRev) {
+  if (!serverBox || !serverBox.supportsDelta) return false;
+  var srvRev = serverBox.rev;
+  if (
+    localRev != null &&
+    localRev !== "" &&
+    srvRev != null &&
+    srvRev !== "" &&
+    isFinite(Number(localRev)) &&
+    isFinite(Number(srvRev)) &&
+    Number(srvRev) < Number(localRev)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Positive qty diffs (local − server) as seed delta partials (no opId).
+ * Used when a boxNo is first assigned or on first contact with a delta-capable server
+ * so in-progress draft lines are not wiped by an empty/partial server box.
+ */
+export function packingSeedDeltaPartials(localLines, serverLines) {
+  function qtyByMapKey(lines) {
+    var m = {};
+    (lines || []).forEach(function (l) {
+      if (!l) return;
+      var mk = packingLineMapKey(l);
+      if (!mk || mk.charAt(0) === "|") return;
+      var q = Number(l.qty) || 0;
+      if (q <= 0) return;
+      m[mk] = (m[mk] || 0) + q;
+    });
+    return m;
+  }
+  function metaByMapKey(lines) {
+    var m = {};
+    (lines || []).forEach(function (l) {
+      if (!l) return;
+      var mk = packingLineMapKey(l);
+      if (!mk || mk.charAt(0) === "|") return;
+      if (!m[mk]) m[mk] = l;
+    });
+    return m;
+  }
+  var localQ = qtyByMapKey(localLines);
+  var serverQ = qtyByMapKey(serverLines);
+  var meta = metaByMapKey(localLines);
+  var out = [];
+  Object.keys(localQ).forEach(function (mk) {
+    var diff = localQ[mk] - (serverQ[mk] || 0);
+    if (!(diff > 0)) return;
+    var l = meta[mk] || {};
+    var lineKey = packingLineKey(l);
+    if (!lineKey) {
+      var pipe = mk.indexOf("|");
+      lineKey = pipe >= 0 ? mk.slice(0, pipe) : mk;
+    }
+    var boxSeq = Math.round(Number(l.boxSeq != null ? l.boxSeq : l.box) || 1) || 1;
+    out.push({
+      lineKey: lineKey,
+      k: lineKey,
+      sku: String(l.sku || ""),
+      ean: String(l.ean || l.barcode || ""),
+      desc: String(l.desc || ""),
+      brand: String(l.brand || ""),
+      flag: String(l.flag || ""),
+      boxSeq: boxSeq,
+      deltaQty: diff,
+    });
+  });
+  return out;
+}
+
+/** Map key includes boxSeq so multi-box PKs stay separate. */
+export function packingLineMapKey(line) {
+  var seq = Math.round(Number(line && (line.boxSeq != null ? line.boxSeq : line.box)) || 1);
+  if (!(seq > 0)) seq = 1;
+  return packingLineKey(line) + "|" + seq;
+}
+
+/**
+ * Build one idempotent packing delta op.
+ * @returns {object|null}
+ */
+export function buildPackingDeltaOp( partial ) {
+  partial = partial || {};
+  var opId = String(partial.opId || "").trim();
+  var deltaQty = Number(partial.deltaQty);
+  if (!opId || !isFinite(deltaQty) || deltaQty === 0) return null;
+  var boxSeq = Math.round(Number(partial.boxSeq) || 1) || 1;
+  var sku = String(partial.sku || "").trim();
+  var ean = String(partial.ean || partial.barcode || "").trim();
+  var desc = String(partial.desc || "").trim();
+  var brand = String(partial.brand || "").trim();
+  var flag = String(partial.flag || "").trim();
+  var lineKey =
+    String(partial.lineKey || "").trim() ||
+    packingLineKey({ sku: sku, ean: ean, desc: desc, k: partial.k });
+  if (!lineKey) return null;
+  return {
+    opId: opId,
+    deviceId: String(partial.deviceId || "").trim(),
+    clientTs: Number(partial.clientTs) || Date.now(),
+    boxNo: String(partial.boxNo || "").trim(),
+    lineKey: lineKey,
+    sku: sku,
+    ean: ean,
+    desc: desc,
+    brand: brand,
+    flag: flag,
+    boxSeq: boxSeq,
+    deltaQty: deltaQty,
+  };
+}
+
+/**
+ * Apply packing delta ops onto base lines. Duplicate opIds (in ops or seenOpIds) are skipped.
+ * Negative deltas reduce qty; lines at qty<=0 are removed.
+ *
+ * @param {Array} baseLines
+ * @param {Array} ops
+ * @param {{ seenOpIds?: Object }} [opts]
+ * @returns {{ lines: Array, applied: Array, skippedDup: string[], seenOpIds: Object }}
+ */
+export function applyPackingOps(baseLines, ops, opts) {
+  opts = opts || {};
+  var seenOpIds = {};
+  Object.keys(opts.seenOpIds || {}).forEach(function (k) {
+    seenOpIds[k] = 1;
+  });
+  var map = {};
+  (baseLines || []).forEach(function (l) {
+    if (!l) return;
+    var qty = Number(l.qty) || 0;
+    if (qty <= 0) return;
+    var key = packingLineMapKey(l);
+    if (!key || key.charAt(0) === "|") return;
+    var boxSeq = Math.round(Number(l.boxSeq != null ? l.boxSeq : l.box) || 1) || 1;
+    map[key] = {
+      k: packingLineKey(l),
+      sku: String(l.sku || ""),
+      ean: String(l.ean || l.barcode || ""),
+      desc: String(l.desc || ""),
+      brand: String(l.brand || ""),
+      flag: String(l.flag || ""),
+      boxSeq: boxSeq,
+      qty: qty,
+      lastDeviceId: l.lastDeviceId || "",
+      lastOpAt: l.lastOpAt || "",
+    };
+  });
+
+  var applied = [];
+  var skippedDup = [];
+  (ops || []).forEach(function (raw) {
+    var op = buildPackingDeltaOp(raw) || raw;
+    var id = String((op && op.opId) || "").trim();
+    if (!id) return;
+    if (seenOpIds[id]) {
+      skippedDup.push(id);
+      return;
+    }
+    seenOpIds[id] = 1;
+    var delta = Number(op.deltaQty);
+    if (!isFinite(delta) || delta === 0) return;
+    var boxSeq = Math.round(Number(op.boxSeq) || 1) || 1;
+    var lineKey =
+      String(op.lineKey || "").trim() ||
+      packingLineKey({
+        sku: op.sku,
+        ean: op.ean,
+        desc: op.desc,
+        k: op.k,
+      });
+    if (!lineKey) return;
+    var key = lineKey + "|" + boxSeq;
+    var cur = map[key];
+    if (!cur) {
+      if (delta < 0) {
+        applied.push(op);
+        return;
+      }
+      cur = {
+        k: lineKey,
+        sku: String(op.sku || ""),
+        ean: String(op.ean || ""),
+        desc: String(op.desc || ""),
+        brand: String(op.brand || ""),
+        flag: String(op.flag || ""),
+        boxSeq: boxSeq,
+        qty: 0,
+        lastDeviceId: "",
+        lastOpAt: "",
+      };
+      map[key] = cur;
+    }
+    cur.qty = (Number(cur.qty) || 0) + delta;
+    if (op.sku) cur.sku = String(op.sku);
+    if (op.ean) cur.ean = String(op.ean);
+    if (op.desc) cur.desc = String(op.desc);
+    if (op.brand) cur.brand = String(op.brand);
+    if (op.flag != null && String(op.flag) !== "") cur.flag = String(op.flag);
+    if (op.deviceId) cur.lastDeviceId = String(op.deviceId);
+    if (op.clientTs) cur.lastOpAt = op.clientTs;
+    if (cur.qty <= 0) delete map[key];
+    applied.push(op);
+  });
+
+  var lines = Object.keys(map)
+    .map(function (k) {
+      return map[k];
+    })
+    .filter(function (l) {
+      return (Number(l.qty) || 0) > 0;
+    });
+
+  return {
+    lines: lines,
+    applied: applied,
+    skippedDup: skippedDup,
+    seenOpIds: seenOpIds,
+  };
+}
+
+/** True when localRev is set and differs from serverRev. */
+export function packingStaleVersion(localRev, serverRev) {
+  if (localRev == null || localRev === "" || serverRev == null || serverRev === "") return false;
+  return Number(localRev) !== Number(serverRev);
+}
+
+/**
+ * Devices (excluding me) seen within windowMs.
+ * @param {Array<{deviceId:string,lastSeen:number}>} devices
+ */
+export function packingActivePeers(devices, myDeviceId, nowMs, windowMs) {
+  var now = nowMs != null ? Number(nowMs) : Date.now();
+  var win = windowMs != null ? Number(windowMs) : 30000;
+  var me = String(myDeviceId || "");
+  return (devices || []).filter(function (d) {
+    if (!d || !d.deviceId) return false;
+    if (String(d.deviceId) === me) return false;
+    var seen = Number(d.lastSeen) || 0;
+    return now - seen <= win;
+  });
+}
+
+export function packingPeerBannerText(peers) {
+  var n = (peers || []).length;
+  if (n <= 0) return "";
+  if (n === 1) return "อีก 1 เครื่องกำลังแพ็คกล่องนี้";
+  return "อีก " + n + " เครื่องกำลังแพ็คกล่องนี้";
+}
+
+/**
  * Check one SKU against SOH.
  * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
  */
@@ -1265,7 +1629,12 @@ if (typeof window !== "undefined") {
     packingSohLeftover: packingSohLeftover,
     formatSohChip: formatSohChip,
     formatPackingSohLine: formatPackingSohLine,
+    formatPackingSohLineDetailed: formatPackingSohLineDetailed,
     packingSohLineInfo: packingSohLineInfo,
+    packingSohLineInfoDetailed: packingSohLineInfoDetailed,
+    packingCounterPackedMap: packingCounterPackedMap,
+    packingMergeCounterPacked: packingMergeCounterPacked,
+    packingSohSummaryFromPacked: packingSohSummaryFromPacked,
     formatSohPosBadge: formatSohPosBadge,
     formatPackingSohLastStatus: formatPackingSohLastStatus,
     packingSohSummary: packingSohSummary,
@@ -1275,5 +1644,14 @@ if (typeof window !== "undefined") {
     packingCounterCheckShortName: packingCounterCheckShortName,
     packingCounterCheckExportStamp: packingCounterCheckExportStamp,
     buildCounterCheckExcelData: buildCounterCheckExcelData,
+    packingLineKey: packingLineKey,
+    packingLineMapKey: packingLineMapKey,
+    packingShouldApplyServerBox: packingShouldApplyServerBox,
+    packingSeedDeltaPartials: packingSeedDeltaPartials,
+    applyPackingOps: applyPackingOps,
+    packingStaleVersion: packingStaleVersion,
+    packingActivePeers: packingActivePeers,
+    packingPeerBannerText: packingPeerBannerText,
+    buildPackingDeltaOp: buildPackingDeltaOp,
   };
 }
