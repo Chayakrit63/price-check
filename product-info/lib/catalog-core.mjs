@@ -2,7 +2,24 @@
  * Shared catalog classifier + search (Node tests + browser via window.CatalogCore).
  * Bump VERSION in lockstep with APP_VER in index.html (cache-bust query on the module URL).
  */
-export var VERSION = "20261123b";
+import {
+  stripBarcodeRaw,
+  gtinChecksumOk,
+  expandUpce,
+  normalizeBarcode,
+  barcodeConsensusPush,
+  barcodeFormatsForMode,
+} from "./cam-barcode.mjs";
+export {
+  stripBarcodeRaw,
+  gtinChecksumOk,
+  expandUpce,
+  normalizeBarcode,
+  barcodeConsensusPush,
+  barcodeFormatsForMode,
+};
+
+export var VERSION = "20261124a";
 
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
@@ -1653,5 +1670,11 @@ if (typeof window !== "undefined") {
     packingActivePeers: packingActivePeers,
     packingPeerBannerText: packingPeerBannerText,
     buildPackingDeltaOp: buildPackingDeltaOp,
+    stripBarcodeRaw: stripBarcodeRaw,
+    gtinChecksumOk: gtinChecksumOk,
+    expandUpce: expandUpce,
+    normalizeBarcode: normalizeBarcode,
+    barcodeConsensusPush: barcodeConsensusPush,
+    barcodeFormatsForMode: barcodeFormatsForMode,
   };
 }

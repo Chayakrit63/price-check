@@ -178,7 +178,9 @@ body{padding-bottom:env(safe-area-inset-bottom)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
+<script type="module" src="product-info/lib/cam-scan.mjs?v=20261124a"></script>
 <script>
+var APP_VER="20261124a";
 var SAMPLE = {updated:"16/11/2026",count:603,rows:[
   ["L3720002","CACHAREL ANAIS ANAIS EDT 50ML","ANAIS ANAIS EDT","CACHAREL","50 ML",2500,800,0.68,"3360374507206","3360374507206"],
   ["S0960303","RALPH LAUREN RALPH EDT 100ML FEMALE","RALPH EDT","RALPH LAUREN","100 ML",3550,1200,0.6619718309859155,"NOT FOUND",""]
@@ -391,26 +393,59 @@ function logScan(code, sku){
   try{fetch(url,{mode:"no-cors",keepalive:true,method:"GET"}).catch(function(){});return;}catch(e){}
   try{var img=new Image();img.src=url;}catch(e2){}
 }
-function formats(){
-  var F=window.Html5QrcodeSupportedFormats;
-  if(!F) return undefined;
-  return [F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.QR_CODE,F.DATA_MATRIX];
-}
-function ensureLib(){
-  return new Promise(function(resolve, reject){
-    if(window.Html5Qrcode){resolve();return;}
-    var s=document.createElement("script");
-    s.src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
-    s.onload=function(){window.Html5Qrcode?resolve():reject(new Error("lib"));};
-    s.onerror=function(){reject(new Error("lib"));};
-    document.head.appendChild(s);
-  });
-}
 
+/* ---- Shared CamScan (product-info/lib/cam-scan.mjs) — oneshot mode ---- */
+var camCtl=null;
+function ensureCam(){
+  if(camCtl) return camCtl;
+  if(!window.CamScan||!CamScan.create) return null;
+  camCtl=CamScan.create({
+    readerId:"reader",
+    fileReaderId:"file-reader",
+    camKey:CAMKEY,
+    camEl:"cam",
+    getMode:function(){ return "oneshot"; },
+    isEnabled:function(){ return true; },
+    isBlocked:function(){ return false; },
+    onHit:function(text){ onScanFromCam(text); },
+    onStarting:function(){ showBusy("กำลังเปิดกล้อง","Opening camera…"); },
+    onLive:function(){
+      show($("cam-msg"),false);
+      $("cam").classList.add("live");
+      if($("under-cam")) $("under-cam").classList.add("show");
+      syncCamState();
+    },
+    onError:function(text){ camOk=false; scanning=false; starting=false; showPhotoUi(text); },
+    onTorchAvailable:function(on){ var b=$("torch"); if(b&&on) b.classList.add("show"); },
+    onTorch:function(on){ torchOn=!!on; var b=$("torch"); if(b) b.classList.toggle("on",torchOn); },
+    onZoomAvailable:function(on, cur){
+      var b=$("zoom"); if(!b) return;
+      zoomCur=cur||1;
+      if(on){ b.classList.add("show"); b.textContent=(Math.round(zoomCur*10)/10)+"x"; b.classList.toggle("on",zoomCur>1.01); }
+      else b.classList.remove("show");
+    },
+    onZoom:function(cur){ zoomCur=cur; var b=$("zoom"); if(b){ b.textContent=(Math.round(zoomCur*10)/10)+"x"; b.classList.toggle("on",zoomCur>1.01);} },
+    onCams:function(list, id){
+      rearCams=list||[]; curCamId=id||"";
+      var b=$("camsw"); if(b) b.classList.toggle("show",rearCams.length>1);
+    },
+    onFocusRing:function(px,py){
+      var ring=$("focus-ring");
+      if(ring){ ring.style.left=px+"px"; ring.style.top=py+"px"; ring.classList.remove("on"); void ring.offsetWidth; ring.classList.add("on"); setTimeout(function(){ring.classList.remove("on");},700); }
+    }
+  });
+  return camCtl;
+}
+function syncCamState(){
+  if(!camCtl) return;
+  var st=camCtl.getState();
+  scanning=st.scanning; starting=st.starting; camOk=st.camOk; camPaused=st.camPaused; torchOn=st.torchOn;
+}
+function hideTorch(){var b=$("torch");if(b){b.classList.remove("show");b.classList.remove("on");}torchOn=false;var z=$("zoom");if(z)z.classList.remove("show");var w=$("camsw");if(w)w.classList.remove("show");}
 function showBusy(title, body){
   $("cam").classList.remove("live");
   if($("under-cam")) $("under-cam").classList.remove("show");
-  if(typeof hideTorch==="function") hideTorch();
+  hideTorch();
   show($("cam-msg"),true);
   show($("busy-ui"),true);
   show($("photo-ui"),false);
@@ -418,108 +453,38 @@ function showBusy(title, body){
   $("msg-t").textContent=title||"";
   $("msg-p").textContent=body||"";
 }
-
-function loadImage(file){
-  return new Promise(function(resolve, reject){
-    var url=URL.createObjectURL(file);
-    var img=new Image();
-    img.onload=function(){URL.revokeObjectURL(url);resolve(img);};
-    img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("image"));};
-    img.src=url;
-  });
+function showPhotoUi(err){
+  $("cam").classList.remove("live");
+  if($("under-cam")) $("under-cam").classList.remove("show");
+  hideTorch();
+  show($("cam-msg"),true);
+  show($("busy-ui"),false);
+  show($("photo-ui"),true);
+  $("shot").disabled=!catLoaded;
+  if(err){
+    show($("photo-hint"),false);
+    $("photo-err").textContent=err;
+    show($("photo-err"),true);
+  }else{
+    show($("photo-err"),false);
+    show($("photo-hint"),true);
+  }
 }
-function canvasToFile(canvas, name){
-  return new Promise(function(resolve, reject){
-    function toFile(blob){
-      if(!blob){reject(new Error("blob"));return;}
-      try{resolve(new File([blob], name||"scan.jpg", {type:"image/jpeg"}));}
-      catch(e){resolve(blob);}
-    }
-    if(canvas.toBlob){
-      canvas.toBlob(toFile, "image/jpeg", 0.92);
-    }else{
-      var data=canvas.toDataURL("image/jpeg", 0.92);
-      var m=data.split(",");
-      var b=atob(m[1]||"");
-      var arr=new Uint8Array(b.length);
-      for(var i=0;i<b.length;i++) arr[i]=b.charCodeAt(i);
-      toFile(new Blob([arr],{type:"image/jpeg"}));
-    }
-  });
+function camLive(){
+  show($("cam-msg"),false);
+  $("cam").classList.add("live");
+  if($("under-cam")) $("under-cam").classList.add("show");
 }
-function drawToFile(img, sx, sy, sw, sh, dw, dh, rotate90, name){
-  var c=document.createElement("canvas");
-  if(rotate90){c.width=dh;c.height=dw;}
-  else{c.width=dw;c.height=dh;}
-  var ctx=c.getContext("2d");
-  if(rotate90){ctx.translate(dh,0);ctx.rotate(Math.PI/2);}
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
-  return canvasToFile(c, name);
-}
-function downscaleFile(file, maxSide){
-  return loadImage(file).then(function(img){
-    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
-    var long=Math.max(w,h)||1;
-    if(long<=maxSide) return file;
-    var scale=maxSide/long;
-    var dw=Math.max(1,Math.round(w*scale)), dh=Math.max(1,Math.round(h*scale));
-    return drawToFile(img, 0, 0, w, h, dw, dh, false, "scan.jpg");
-  });
-}
-function centerCropFile(file){
-  return loadImage(file).then(function(img){
-    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
-    var cw=Math.max(1,Math.round(w*0.7)), ch=Math.max(1,Math.round(h*0.7));
-    var x=Math.round((w-cw)/2), y=Math.round((h-ch)/2);
-    return drawToFile(img, x, y, cw, ch, cw, ch, false, "crop.jpg");
-  });
-}
-function rotate90File(file){
-  return loadImage(file).then(function(img){
-    var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
-    return drawToFile(img, 0, 0, w, h, w, h, true, "rot.jpg");
-  });
-}
-function scanFileOnce(file){
-  return ensureLib().then(function(){
-    var holder=$("file-reader");
-    holder.innerHTML="";
-    var qr=new Html5Qrcode("file-reader", {formatsToSupport:formats(), verbose:false});
-    return qr.scanFile(file, false).then(function(text){
-      try{qr.clear();}catch(e){}
-      holder.innerHTML="";
-      return text;
-    }, function(){
-      try{qr.clear();}catch(e){}
-      holder.innerHTML="";
-      return "";
-    });
-  });
-}
-function decodeImage(file){
-  if(!file) return Promise.resolve("");
-  return downscaleFile(file, 1600).then(function(prepared){
-    return scanFileOnce(prepared).then(function(text){
-      if(text) return text;
-      return centerCropFile(prepared).then(function(crop){
-        return scanFileOnce(crop);
-      }).then(function(text){
-        if(text) return text;
-        return rotate90File(prepared).then(function(rot){
-          return scanFileOnce(rot);
-        });
-      });
-    });
-  }).catch(function(){return "";});
-}
-function applyDecoded(text){
-  lastKey=norm(text).toUpperCase(); lastAt=Date.now();
-  vibrate(); beep();
-  var hit=lookup(text);
-  if(hit) showResult(hit, text);
-  else showNotFound(text);
-  logScan(text, hit?hit.sku:"");
-}
+function startCam(){ var c=ensureCam(); if(!c){ showBusy("กำลังเปิดกล้อง","Opening camera…"); setTimeout(startCam,50); return; } c.start(); syncCamState(); }
+function stopCam(){ var c=ensureCam(); if(!c){scanning=false;starting=false;return Promise.resolve();} var p=c.stop(); syncCamState(); $("cam").classList.remove("live"); hideTorch(); return p; }
+function pauseCam(){ var c=ensureCam(); if(c) c.pause(); syncCamState(); $("cam").classList.remove("live"); hideTorch(); }
+function resumeCam(){ show($("out"),false); show($("scan"),true); setTyping(false); var c=ensureCam(); if(c) c.resume(); syncCamState(); }
+function switchCam(){ var c=ensureCam(); if(c) c.switchCam(); }
+function toggleTorch(){ var c=ensureCam(); if(c) c.toggleTorch(); }
+function toggleZoom(){ var c=ensureCam(); if(c) c.toggleZoom(); }
+function onCamTap(ev){ var c=ensureCam(); if(c) c.onCamTap(ev); }
+function decodeImage(file){ var c=ensureCam(); if(c) return c.decodeImage(file); return Promise.resolve(""); }
+function openCapture(){ var f=$("file"); if(!f) return; f.value=""; f.click(); }
 function onPhotoFile(ev){
   var file=ev.target.files&&ev.target.files[0];
   ev.target.value="";
@@ -535,322 +500,23 @@ function onPhotoFile(ev){
     showPhotoUi("อ่านบาร์โค้ดไม่ได้ ลองถ่ายใกล้ๆ ให้ชัด หรือพิมพ์รหัส");
   });
 }
-function openCapture(){
-  var f=$("file");
-  if(!f) return;
-  f.value="";
-  f.click();
+function applyDecoded(text){
+  lastKey=norm(text).toUpperCase(); lastAt=Date.now();
+  vibrate(); beep();
+  var hit=lookup(text);
+  if(hit) showResult(hit, text);
+  else showNotFound(text);
+  logScan(text, hit?hit.sku:"");
 }
-
-function camBad(l){return /wide|ultra|tele|depth|macro|infrared|\bir\b/i.test(l||"");}
-function camRearLabel(l){return /back|rear|environment|หลัง|ท้าย|world/i.test(l||"");}
-function camNum(l){var m=/camera2?\s*(\d+)/i.exec(l||"")||/(\d+)/.exec(l||"");return m?parseInt(m[1],10):99;}
-function rearList(cams){
-  if(!cams||!cams.length) return [];
-  var r=cams.filter(function(c){return camRearLabel(c.label);});
-  if(!r.length) r=cams.length>1?cams.slice(1):cams.slice();
-  r.sort(function(a,b){
-    var ba=camBad(a.label)?1:0, bb=camBad(b.label)?1:0;
-    if(ba!==bb) return ba-bb;
-    return camNum(a.label)-camNum(b.label);
-  });
-  return r;
-}
-function pickRear(cams){
-  rearCams=rearList(cams);
-  if(!rearCams.length) return null;
-  var saved="";
-  try{saved=localStorage.getItem(CAMKEY)||"";}catch(e){}
-  for(var i=0;i<rearCams.length;i++) if(rearCams[i].id===saved) return saved;
-  return rearCams[0].id;
-}
-function saveCam(id){try{if(id) localStorage.setItem(CAMKEY,id);}catch(e){}}
-function trackCaps(){try{return (scanner&&scanner.getRunningTrackCapabilities&&scanner.getRunningTrackCapabilities())||{};}catch(e){return {};}}
-function trackSettings(){try{return (scanner&&scanner.getRunningTrackSettings&&scanner.getRunningTrackSettings())||{};}catch(e){return {};}}
-function applyC(c){
-  try{
-    if(!scanner||!scanner.applyVideoConstraints) return Promise.reject(new Error("na"));
-    return Promise.resolve(scanner.applyVideoConstraints({advanced:[c]}));
-  }catch(e){return Promise.reject(e);}
-}
-function hasMode(caps,m){return !!(caps&&caps.focusMode&&caps.focusMode.indexOf&&caps.focusMode.indexOf(m)>=0);}
-function applyContinuousFocus(){
-  var caps=trackCaps();
-  if(hasMode(caps,"continuous")) return applyC({focusMode:"continuous"}).catch(function(){});
-  return Promise.resolve();
-}
-function setZoomLabel(){
-  var b=$("zoom"); if(!b) return;
-  b.textContent=(Math.round(zoomCur*10)/10)+"x";
-  b.classList.toggle("on",zoomCur>1.01);
-}
-function setupZoom(){
-  var b=$("zoom"); if(b) b.classList.remove("show");
-  var caps=trackCaps();
-  zoomCaps=(caps&&caps.zoom&&typeof caps.zoom.max==="number")?caps.zoom:null;
-  if(!zoomCaps||zoomCaps.max<=1.05){zoomCaps=null;return Promise.resolve();}
-  var lo=Math.max(1,zoomCaps.min||1);
-  zoomDefault=Math.min(zoomCaps.max,Math.max(lo,1.8));
-  zoomCur=zoomDefault;
-  if(b){b.classList.add("show");}
-  setZoomLabel();
-  return applyC({zoom:zoomCur}).catch(function(){zoomCur=trackSettings().zoom||1;setZoomLabel();});
-}
-function toggleZoom(){
-  if(!scanner||!scanning||!zoomCaps) return;
-  var lo=Math.max(1,zoomCaps.min||1);
-  var next=zoomCur>lo+0.05?lo:Math.min(zoomCaps.max,Math.max(zoomDefault,2));
-  applyC({zoom:next}).then(function(){zoomCur=next;setZoomLabel();refocus();}).catch(function(){});
-}
-function refocus(x,y){
-  var caps=trackCaps();
-  var c={};
-  var sup={};
-  try{sup=navigator.mediaDevices.getSupportedConstraints()||{};}catch(e){}
-  if(typeof x==="number"&&sup.pointsOfInterest) c.pointsOfInterest=[{x:x,y:y}];
-  if(hasMode(caps,"single-shot")) c.focusMode="single-shot";
-  else if(hasMode(caps,"continuous")) c.focusMode="continuous";
-  if(!c.focusMode&&!c.pointsOfInterest) return;
-  clearTimeout(focusTimer);
-  applyC(c).catch(function(){
-    if(c.pointsOfInterest){delete c.pointsOfInterest;if(c.focusMode) return applyC(c);}
-  }).catch(function(){}).then(function(){
-    if(c.focusMode==="single-shot"&&hasMode(caps,"continuous")){
-      focusTimer=setTimeout(function(){if(scanning) applyContinuousFocus();},1200);
-    }
-  });
-}
-function onCamTap(ev){
-  if(!scanner||!scanning) return;
-  var cam=$("cam"); var r=cam.getBoundingClientRect();
-  var t=(ev.touches&&ev.touches[0])||ev;
-  var px=t.clientX-r.left, py=t.clientY-r.top;
-  var ring=$("focus-ring");
-  if(ring){
-    ring.style.left=px+"px"; ring.style.top=py+"px";
-    ring.classList.remove("on"); void ring.offsetWidth; ring.classList.add("on");
-    setTimeout(function(){ring.classList.remove("on");},700);
-  }
-  refocus(Math.min(1,Math.max(0,px/r.width)),Math.min(1,Math.max(0,py/r.height)));
-}
-function setupCamSwitch(){
-  var b=$("camsw"); if(!b) return;
-  b.classList.toggle("show",rearCams.length>1);
-}
-function switchCam(){
-  if(!rearCams.length||starting) return;
-  var idx=-1;
-  for(var i=0;i<rearCams.length;i++) if(rearCams[i].id===curCamId) idx=i;
-  var next=rearCams[(idx+1)%rearCams.length];
-  if(!next) return;
-  saveCam(next.id);
-  stopCam().then(function(){startCam();});
-}
-function tuneCam(){
-  return applyContinuousFocus().then(setupZoom).then(function(){
-    var st=trackSettings();
-    if(st&&st.deviceId){curCamId=st.deviceId;}
-    setupCamSwitch();
-  }).catch(function(){setupCamSwitch();});
-}
-function hideTorch(){var b=$("torch");if(b){b.classList.remove("show");b.classList.remove("on");}torchOn=false;var z=$("zoom");if(z)z.classList.remove("show");var w=$("camsw");if(w)w.classList.remove("show");}
-var loopTimer=0, loopBusy=false, nativeDet=null, nativeTried=false, loopCanvas=null;
-var NATIVE_FMTS=["ean_13","ean_8","upc_a","upc_e","code_128","qr_code","data_matrix"];
-function getNativeDetector(){
-  if(nativeTried) return Promise.resolve(nativeDet);
-  nativeTried=true;
-  if(!("BarcodeDetector" in window)) return Promise.resolve(null);
-  var mk=function(list){try{nativeDet=new window.BarcodeDetector({formats:list});}catch(e){nativeDet=null;}return nativeDet;};
-  try{
-    if(window.BarcodeDetector.getSupportedFormats){
-      return window.BarcodeDetector.getSupportedFormats().then(function(sup){
-        var list=NATIVE_FMTS.filter(function(f){return sup.indexOf(f)>=0;});
-        return list.length?mk(list):null;
-      }).catch(function(){return mk(NATIVE_FMTS);});
-    }
-  }catch(e){}
-  return Promise.resolve(mk(NATIVE_FMTS));
-}
-function camVideo(){return document.querySelector("#reader video");}
-function bandCanvas(v){
-  var vw=v.videoWidth, vh=v.videoHeight, cw=v.clientWidth||vw, ch=v.clientHeight||vh;
-  if(!vw||!vh) return null;
-  var sc=Math.max(cw/vw,ch/vh);
-  var visW=cw/sc, visH=ch/sc;
-  var sw=visW*0.94, sh=Math.min(vh,visH*0.6);
-  var sx=(vw-sw)/2, sy=(vh-sh)/2;
-  var k=Math.min(1,1280/sw);
-  var c=loopCanvas||(loopCanvas=document.createElement("canvas"));
-  c.width=Math.round(sw*k); c.height=Math.round(sh*k);
-  var ctx=c.getContext("2d",{willReadFrequently:true});
-  ctx.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);
-  return c;
-}
-function loopTick(){
-  loopTimer=0;
-  if(!scanning||!scanner) return;
-  var v=camVideo();
-  if(loopBusy||!v||v.readyState<2){loopTimer=setTimeout(loopTick,150);return;}
-  loopBusy=true;
-  var p;
-  if(nativeDet){
-    p=nativeDet.detect(v).then(function(r){
-      if(r&&r.length) return r[0].rawValue;
-      var c=bandCanvas(v);
-      return c?nativeDet.detect(c).then(function(r2){return r2&&r2.length?r2[0].rawValue:"";}):"";
-    });
-  }else{
-    var c=bandCanvas(v);
-    p=(c&&scanner.qrcode&&scanner.qrcode.decodeAsync)?scanner.qrcode.decodeAsync(c).then(function(res){return res&&res.text;}):Promise.resolve("");
-  }
-  Promise.resolve(p).catch(function(){return "";}).then(function(text){
-    loopBusy=false;
-    if(text&&scanning){window.__lastSrc=nativeDet?"native":"loop";onScan(text);return;}
-    if(scanning) loopTimer=setTimeout(loopTick,nativeDet?150:250);
-  });
-}
-function startLoop(){
-  stopLoop();
-  getNativeDetector().then(function(){if(scanning&&!loopTimer) loopTimer=setTimeout(loopTick,150);});
-}
-function stopLoop(){if(loopTimer){clearTimeout(loopTimer);loopTimer=0;}}
-function onLibScan(text){if(scanning) window.__lastSrc="lib";onScan(text);}
-function setupTorch(){
-  hideTorch();
-  try{
-    var caps=scanner&&scanner.getRunningTrackCapabilities&&scanner.getRunningTrackCapabilities();
-    if(caps&&caps.torch) $("torch").classList.add("show");
-  }catch(e){}
-}
-function toggleTorch(){
-  if(!scanner||!scanning) return;
-  var next=!torchOn;
-  var apply=scanner.applyVideoConstraints({advanced:[{torch:next}]});
-  Promise.resolve(apply).then(function(){
-    torchOn=next;
-    $("torch").classList.toggle("on",torchOn);
-  }).catch(function(){});
-}
-function camLive(){
-  show($("cam-msg"),false);
-  $("cam").classList.add("live");
-  $("under-cam").classList.add("show");
-  setupTorch();
-  tuneCam();
-  if(scanning) startLoop();
-}
-function showPhotoUi(err){
-  $("cam").classList.remove("live");
-  $("under-cam").classList.remove("show");
-  hideTorch();
-  show($("cam-msg"),true);
-  show($("busy-ui"),false);
-  show($("photo-ui"),true);
-  $("shot").disabled=!catLoaded;
-  if(err){
-    show($("photo-hint"),false);
-    $("photo-err").textContent=err;
-    show($("photo-err"),true);
-  }else{
-    show($("photo-err"),false);
-    show($("photo-hint"),true);
-  }
-}
-function stopCam(){
-  stopLoop();
-  $("cam").classList.remove("live");
-  hideTorch();
-  camPaused=false;
-  if(!scanner){scanning=false;starting=false;return Promise.resolve();}
-  var s=scanner;
-  scanning=false;
-  starting=false;
-  return s.stop().then(function(){return s.clear();}).catch(function(){}).then(function(){
-    if(scanner===s) scanner=null;
-  });
-}
-function pauseCam(){
-  stopLoop();
-  $("cam").classList.remove("live");
-  hideTorch();
-  scanning=false;
-  try{
-    if(scanner&&scanner.pause){scanner.pause(true);camPaused=true;return;}
-  }catch(e){}
-  camPaused=false;
-  stopCam();
-}
-function resumeCam(){
-  show($("out"),false);
-  show($("scan"),true);
-  setTyping(false);
-  if(camPaused&&scanner&&scanner.resume){
-    try{
-      scanner.resume();
-      scanning=true;
-      camPaused=false;
-      camOk=true;
-      camLive();
-      return;
-    }catch(e){}
-  }
-  startCam();
-}
-function camConfig(id,low){
-  var vc={width:{ideal:low?1280:1920},height:{ideal:low?720:1080},frameRate:{ideal:15}};
-  if(id) vc.deviceId={exact:id}; else vc.facingMode={ideal:"environment"};
-  return {
-    fps:12,
-    qrbox:function(w,h){return {width:Math.max(200,Math.floor(w*0.9)),height:Math.max(90,Math.floor(h*0.45))};},
-    experimentalFeatures:{useBarCodeDetectorIfSupported:true},
-    rememberLastUsedCamera:true,
-    videoConstraints:vc
-  };
-}
-function startCam(){
-  if(starting||scanning) return;
-  starting=true;
-  camPaused=false;
-  showBusy("กำลังเปิดกล้อง","Opening camera…");
-  ensureLib().then(function(){
-    return stopCam();
-  }).then(function(){
-    starting=true;
-    $("reader").innerHTML="";
-    scanner=new Html5Qrcode("reader",{formatsToSupport:formats(),verbose:false,experimentalFeatures:{useBarCodeDetectorIfSupported:true}});
-    function tryCfg(id,low){
-      curCamId=id||"";
-      var src=id?id:{facingMode:{ideal:"environment"}};
-      return scanner.start(src,camConfig(id,low),onLibScan,function(){});
-    }
-    function tryAll(id){
-      return tryCfg(id,false).catch(function(){return tryCfg(id,true);});
-    }
-    return Html5Qrcode.getCameras().catch(function(){return [];}).then(function(cams){
-      var id=pickRear(cams);
-      if(!id) return tryAll(null);
-      return tryAll(id).catch(function(){return tryAll(null);});
-    });
-  }).then(function(){
-    starting=false; scanning=true; camOk=true; camLive();
-  }).catch(function(err){
-    starting=false; scanning=false; camOk=false;
-    var msg=String((err&&(err.message||err.name))||err||"");
-    var low=msg.toLowerCase();
-    var text="เปิดกล้องไม่ได้ ใช้ปุ่มถ่ายรูปได้เลย / Camera failed — use the photo button.";
-    if(/notallowed|permission|denied/i.test(low)) text="ไม่ได้รับสิทธิ์ใช้กล้อง · Camera permission denied. ใช้ปุ่มถ่ายรูป หรืออนุญาตกล้องแล้วกดเปิดกล้องอีกครั้ง";
-    stopCam().then(function(){ showPhotoUi(text); });
-  });
-}
-function onScan(text){
+function onScanFromCam(text){
   text=String(text||"").trim();
-  if(!text||!scanning) return;
-  scanning=false;
-  stopLoop();
-  pauseCam();
+  if(!text) return;
+  syncCamState();
   window.__lastScan=text;
   applyDecoded(text);
 }
+function onScan(text){ onScanFromCam(text); }
+function stopLoop(){ /* CamScan owns the decode loop */ }
 function showScan(){
   show($("out"),false);
   show($("scan"),true);
@@ -1195,6 +861,7 @@ document.addEventListener("visibilitychange",function(){
   if(lastLoadedAt&&Date.now()-lastLoadedAt>5*60*1000) reloadCatalog();
   if(!$("scan").classList.contains("hidden")&&camOk&&!scanning&&!starting&&!decoding) resumeCam();
 });
+setTimeout(function(){ if(window.CamScan&&CamScan.warmUp) CamScan.warmUp(); }, 0);
 window.__pc={lookup:lookup,showResult:showResult,showNotFound:showNotFound,startCam:startCam,reloadCatalog:reloadCatalog,decodeImage:decodeImage,openCapture:openCapture,showPhotoUi:showPhotoUi,suggest:suggest,runSuggest:runSuggest,hideSug:hideSug,onCat:onCat};
 loadCatalog();
 </script>
