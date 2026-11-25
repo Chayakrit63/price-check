@@ -36,6 +36,7 @@ import {
   formatPackingSohLastStatus,
   packingSohSummary,
   filterSohLeftover,
+  sohLeftoverTypeCounts,
   packingCounterCheck,
   packingCounterCheckStatusLabel,
   packingCounterCheckShortName,
@@ -123,13 +124,49 @@ const SAMPLE_ROWS = [
 test("itemTypeBucket classifier", () => {
   assert.equal(itemTypeBucket("EXT0029", "", "STOCK", ""), "STOCK");
   assert.equal(itemTypeBucket("T-EXT0029", "TESTER 100ML", "TESTER", ""), "TESTER");
-  assert.equal(itemTypeBucket("1800103", "GIFT BAG POSM", "OTH", ""), "OTH");
+  assert.equal(itemTypeBucket("1800103", "GIFT BAG POSM", "OTH", ""), "OTH"); // master OTH wins
   assert.equal(itemTypeBucket("3111601-TRG", "TRAINING", "OTH", ""), "OTH");
   assert.equal(itemTypeBucket("X", "", "SAMP", ""), "GWPS");
   assert.equal(itemTypeBucket("X", "", "GWP", ""), "GWPS");
   assert.equal(itemTypeBucket("X", "", "MINI", ""), "GWPS");
   assert.equal(itemTypeBucket("X", "", "PR GIFT", ""), "GWPS");
   assert.equal(itemTypeBucket("X", "", "OTH", "STOCK"), "STOCK");
+  // Derive from description when master group empty (Prestige warehouse examples)
+  assert.equal(itemTypeBucket("GWP001", "RED TOTE BAG GWP LARGE", "", ""), "GWPS");
+  assert.equal(itemTypeBucket("POSM01", "WOVEN BAG POSM MEDIUM", "", ""), "GWPS");
+  assert.equal(itemTypeBucket("SAMP01", "EDP SAMPLE 2ML", "", ""), "GWPS");
+  assert.equal(itemTypeBucket("L3720002", "CACHAREL ANAIS ANAIS EDT 50ML", "", ""), "STOCK");
+  assert.equal(itemTypeBucket("T3720002", "CACHAREL ANAIS ANAIS EDT 50ML TESTER", "", ""), "TESTER");
+  assert.equal(itemTypeBucket("TRG1", "STAFF TRAINING KIT", "", ""), "OTH");
+});
+
+test("filterSohLeftover typeCat + sohLeftoverTypeCounts", () => {
+  var rows = [
+    { sku: "A", desc: "Saleable EDT 50ML", brand: "DIOR", left: 3, type: "STOCK" },
+    { sku: "T1", desc: "EDT TESTER 100ML", brand: "DIOR", left: 1, type: "TESTER" },
+    { sku: "G1", desc: "RED TOTE BAG GWP LARGE", brand: "DIOR", left: 5, type: "GWPS" },
+    { sku: "O1", desc: "TRAINING", brand: "OTHER", left: 2, type: "OTH" },
+  ];
+  var counts = sohLeftoverTypeCounts(rows);
+  assert.equal(counts.ALL.sku, 4);
+  assert.equal(counts.ALL.qty, 11);
+  assert.equal(counts.STOCK.sku, 1);
+  assert.equal(counts.STOCK.qty, 3);
+  assert.equal(counts.TESTER.sku, 1);
+  assert.equal(counts.GWPS.qty, 5);
+  assert.equal(counts.OTH.sku, 1);
+
+  assert.equal(filterSohLeftover(rows, "", "", "STOCK").length, 1);
+  assert.equal(filterSohLeftover(rows, "", "", "GWPS")[0].sku, "G1");
+  assert.equal(filterSohLeftover(rows, "tote", "", "ALL").length, 1);
+  assert.equal(filterSohLeftover(rows, "tote", "", "STOCK").length, 0); // type + search
+  assert.equal(filterSohLeftover(rows, "", "dior", "TESTER").length, 1);
+  // Derive type from desc when row.type missing
+  assert.equal(
+    filterSohLeftover([{ sku: "X", desc: "WOVEN BAG POSM MEDIUM", left: 1 }], "", "", "GWPS")
+      .length,
+    1
+  );
 });
 
 test("parseSearchQty", () => {
