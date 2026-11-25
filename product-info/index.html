@@ -754,10 +754,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261124a"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261124a"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261125a"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261125a"></script>
 <script>
-var APP_VER="20261124a";
+var APP_VER="20261125a";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -1797,7 +1797,7 @@ document.addEventListener("visibilitychange",function(){
 setTimeout(function(){ if(window.CamScan&&CamScan.warmUp) CamScan.warmUp(); }, 0);
 /* ===================== Packing ===================== */
 var MODE="info", PKVIEW="home";
-var PKKEY="productInfo.pack.v1", PKNAME="productInfo.pack.name", PKSHIP="productInfo.pack.shipTos", PKFROM="productInfo.pack.from", PKFROMS="productInfo.pack.froms", PKLIST="productInfo.pack.list", TABKEY="productInfo.tab", PKTYPEKEY="productInfo.pack.typeCat", PKRECENTKEY="productInfo.pack.recent", INFOTYPEKEY="productInfo.info.typeCat", INFORECENTKEY="productInfo.info.recent";
+var PKKEY="productInfo.pack.v1", PKNAME="productInfo.pack.name", PKSHIP="productInfo.pack.shipTos", PKFROM="productInfo.pack.from", PKFROMS="productInfo.pack.froms", PKLIST="productInfo.pack.list", TABKEY="productInfo.tab", PKTYPEKEY="productInfo.pack.typeCat", PKRECENTKEY="productInfo.pack.recent", INFOTYPEKEY="productInfo.info.typeCat", INFORECENTKEY="productInfo.info.recent", PKSOHTYPEKEY="productInfo.sohLeft.typeCat";
 var INFO={typeCat:"ALL"};
 var PK={drafts:{},cur:""};
 var pkResumeAt=0, pkTouched="", pkSheetOpen=false, pkViewBox=null, pkLabelBox=null, pkBoxes=[], pkServerShip=[], pkFormEdit=false, pkSaving=false, pkListQ="", pkSel={}, pkCounters=[];
@@ -2535,9 +2535,39 @@ function packingSohLeftoverFn(lines, map){
   if(window.CatalogCore&&CatalogCore.packingSohLeftover) return CatalogCore.packingSohLeftover(lines, map);
   return [];
 }
-function filterSohLeftoverFn(rows, q, brand){
-  if(window.CatalogCore&&CatalogCore.filterSohLeftover) return CatalogCore.filterSohLeftover(rows, q, brand);
-  return rows||[];
+function filterSohLeftoverFn(rows, q, brand, typeCat){
+  if(window.CatalogCore&&CatalogCore.filterSohLeftover) return CatalogCore.filterSohLeftover(rows, q, brand, typeCat);
+  return (rows||[]).filter(function(r){
+    if(typeCat&&typeCat!=="ALL"){
+      var t=r.type||catalogRowBucket({sku:r.sku,desc:r.desc,group:r.group});
+      if(t!==typeCat) return false;
+    }
+    return true;
+  });
+}
+function sohLeftoverTypeCountsFn(rows){
+  if(window.CatalogCore&&CatalogCore.sohLeftoverTypeCounts) return CatalogCore.sohLeftoverTypeCounts(rows);
+  return {ALL:{sku:(rows||[]).length,qty:0},STOCK:{sku:0,qty:0},TESTER:{sku:0,qty:0},GWPS:{sku:0,qty:0},OTH:{sku:0,qty:0}};
+}
+function pkSohLeftTypeGet(){
+  try{var v=localStorage.getItem(PKSOHTYPEKEY); if(v) return v;}catch(e){}
+  return "ALL";
+}
+function pkSohLeftTypeSet(v){
+  v=String(v||"ALL").toUpperCase();
+  if(v==="OTHER") v="OTH";
+  try{localStorage.setItem(PKSOHTYPEKEY,v);}catch(e){}
+  return v;
+}
+function pkSohRowType(r){
+  if(r&&r.type) return r.type;
+  var hits=r&&r.sku?lookup(r.sku):null;
+  var cat=hits&&hits.length?(hits.filter(function(x){return String(x.sku).toUpperCase()===String(r.sku).toUpperCase();})[0]||hits[0]):null;
+  return catalogRowBucket({
+    sku:r&&r.sku,
+    desc:(r&&r.desc)||(cat&&cat.desc)||"",
+    group:cat&&cat.group
+  });
 }
 function pkSetSohLast(sku, desc){
   sku=String(sku||"").trim(); if(!sku) return;
@@ -2658,19 +2688,30 @@ function pkOpenSohLeftoverSheet(){
     ? Object.keys(maps.allMap).map(function(sku){return {sku:sku, qty:maps.allMap[sku]};})
     : packItemList(b)||[];
   var rows=packingSohLeftoverFn(leftLines, soh.map).map(function(r){
-    return Object.assign({}, r, {brand:pkSohBrandOf(r.sku, r.desc)});
+    var type=pkSohRowType(r);
+    return Object.assign({}, r, {brand:pkSohBrandOf(r.sku, r.desc), type:type});
   });
-  var state={q:"", brand:"", group:true};
+  var state={q:"", brand:"", typeCat:pkSohLeftTypeGet(), group:true};
   var titleScope=maps.counterWide?"(counter)":"(ใบนี้)";
   var body=openSheet("ยังไม่แพ็ค · Remaining "+titleScope, (soh.asOf?("SOH ณ "+soh.asOf+" · "):"")+rows.length+" SKU");
   function paint(){
-    var filtered=filterSohLeftoverFn(rows, state.q, state.brand);
+    var typeCounts=sohLeftoverTypeCountsFn(rows);
+    var filtered=filterSohLeftoverFn(rows, state.q, state.brand, state.typeCat);
     var brands={};
-    rows.forEach(function(r){var br=r.brand||"—"; brands[br]=(brands[br]||0)+1;});
+    // Brand chips count within current type filter (search still applied separately on paint)
+    filterSohLeftoverFn(rows, "", "", state.typeCat).forEach(function(r){var br=r.brand||"—"; brands[br]=(brands[br]||0)+1;});
     var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
     var html=maps.counterWide
       ?('<p class="ctr-check-note">นับทุกใบ PK ของ counter นี้ + ใบที่เปิด · All PKs for this counter. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter</button></p>')
       :('<p class="ctr-check-note">นับเฉพาะใบแพ็คที่เปิดอยู่ · This open PK only. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter ทุกใบ</button></p>');
+    var typeDefs=[["ALL","All"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"],["OTH","Other"]];
+    html+='<div class="sc-chips soh-left-types" style="margin:0 0 10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch" id="soh-left-types">'+
+      typeDefs.map(function(x){
+        var c=typeCounts[x[0]]||{sku:0,qty:0};
+        var lab=x[1]+" "+c.sku+(c.qty?" · "+c.qty:"");
+        return '<button type="button" data-t="'+x[0]+'" class="'+(state.typeCat===x[0]?"on":"")+'">'+lab+'</button>';
+      }).join("")+
+      '</div>';
     html+='<label class="fl" style="margin:0 0 8px"><span>ค้นหา · Search</span><input id="soh-left-q" value="'+esc(state.q)+'" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
     if(brandKeys.length>1){
       html+='<div class="sc-chips" style="margin:0 0 10px" id="soh-left-brands">'+
@@ -2678,6 +2719,12 @@ function pkOpenSohLeftoverSheet(){
         brandKeys.slice(0,12).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("")+
         '</div>';
     }
+    var filtNote=filtered.length+" / "+rows.length+" SKU";
+    if(state.typeCat&&state.typeCat!=="ALL"){
+      var tc=typeCounts[state.typeCat]||{sku:0,qty:0};
+      filtNote=filtered.length+" SKU · เหลือ "+(state.q||state.brand?filtered.reduce(function(n,r){return n+(Number(r.left)||0);},0):tc.qty)+" ชิ้น";
+    }
+    html+='<p class="ctr-check-note" style="margin:0 0 8px">'+esc(filtNote)+'</p>';
     if(!filtered.length){
       html+='<div class="pk-empty" style="padding:18px 4px">'+(rows.length?'ไม่พบในตัวกรอง':'✓ pullback ครบตาม POS')+'</div>';
     }else if(state.group&&brandKeys.length>1&&!state.brand){
@@ -2702,6 +2749,13 @@ function pkOpenSohLeftoverSheet(){
       qel.oninput=function(){state.q=qel.value; clearTimeout(paint.t); paint.t=setTimeout(paint,180);};
       qel.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();state.q=qel.value;paint();}};
     }
+    var typeChips=$("soh-left-types");
+    if(typeChips) typeChips.onclick=function(ev){
+      var btn=ev.target.closest("button[data-t]"); if(!btn) return;
+      state.typeCat=pkSohLeftTypeSet(btn.getAttribute("data-t")||"ALL");
+      state.brand=""; // reset brand when switching type
+      paint();
+    };
     var chips=$("soh-left-brands");
     if(chips) chips.onclick=function(ev){var btn=ev.target.closest("button[data-b]"); if(!btn)return; state.brand=btn.getAttribute("data-b")||""; paint();};
     body.onclick=function(ev){

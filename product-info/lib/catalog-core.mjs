@@ -19,20 +19,56 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261124a";
+export var VERSION = "20261125a";
 
+/**
+ * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
+ *
+ * Priority (first match wins):
+ * 1. Explicit override (stock-count groupOverride, etc.)
+ * 2. Master Items `group` / category when present:
+ *    - STOCK / TESTER / OTH → that bucket
+ *    - GWP, SAMP, MINI, PR GIFT, EXEC GIFT (and similar) → GWPS
+ * 3. Derived from SKU / description when master group is empty/unknown:
+ *    - Tester: desc/sku contains TESTER; SKU like T-… or ends with digit+F/T
+ *    - GWPs: desc matches GWP, GIFT, POSM, SAMPLE/SAMP, TOTE BAG, WOVEN BAG
+ *    - Other: TRAINING / FIXTURE / DISPLAY in desc
+ *    - else Stock (normal saleable)
+ *
+ * Examples:
+ * - STOCK: L3720002 "CACHAREL ANAIS ANAIS EDT 50ML" group=STOCK
+ * - TESTER: T-EXT0029 "… TESTER 100ML" group=TESTER
+ * - GWPS: "RED TOTE BAG GWP LARGE", "WOVEN BAG POSM MEDIUM", "EDP SAMPLE 2ML"
+ * - OTH: 3111601-TRG "TRAINING" group=OTH
+ */
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
-  var g = String(masterGroup || "").toUpperCase();
+  var g = String(masterGroup || "").toUpperCase().trim();
   if (g === "STOCK") return "STOCK";
   if (g === "TESTER") return "TESTER";
-  if (g === "OTH") return "OTH";
-  if (/GWP|SAMP|MINI|PR GIFT|EXEC GIFT/.test(g)) return "GWPS";
+  if (g === "OTH" || g === "OTHER") return "OTH";
+  if (g && /GWP|SAMP|MINI|PR GIFT|EXEC GIFT|POSM/.test(g)) return "GWPS";
   var d = String(desc || "").toUpperCase();
   var s = String(sku || "").toUpperCase();
   if (/TESTER/.test(d)) return "TESTER";
   if (/^T-/.test(s) || /[0-9][FT]$/.test(s) || /TESTER/.test(s)) return "TESTER";
-  if (/GWP|GIFT/.test(d)) return "GWPS";
+  // Gift / POSM / sample / branded tote-style bags (Prestige warehouse)
+  if (
+    /\bGWP\b/.test(d) ||
+    /\bGIFT\b/.test(d) ||
+    /\bPOSM\b/.test(d) ||
+    /\bSAMPLES?\b/.test(d) ||
+    /\bSAMP\b/.test(d) ||
+    /TOTE\s*BAG/.test(d) ||
+    /WOVEN\s*BAG/.test(d)
+  ) {
+    return "GWPS";
+  }
+  if (/TRAINING|FIXTURE|\bDISPLAY\b/.test(d)) return "OTH";
+  // Unknown master group that isn't empty — treat as Stock unless clearly other
+  if (g && g !== "STOCK") {
+    // leave non-empty unrecognized groups as STOCK (saleable default)
+  }
   return "STOCK";
 }
 
@@ -990,15 +1026,28 @@ export function packingCounterCheck(sohMap, pkBundles) {
   };
 }
 
-/** Filter leftover list by query (sku / barcode / desc) and optional brand. */
-export function filterSohLeftover(rows, query, brand) {
+/**
+ * Filter leftover list by query (sku / barcode / desc), optional brand,
+ * and optional typeCat (ALL|STOCK|TESTER|GWPS|OTH). Uses row.type when set,
+ * else rowTypeBucket(row).
+ */
+export function filterSohLeftover(rows, query, brand, typeCat) {
   var q = String(query || "")
     .trim()
     .toLowerCase();
   var b = String(brand || "")
     .trim()
     .toLowerCase();
+  var tc = String(typeCat || "ALL")
+    .trim()
+    .toUpperCase();
+  if (tc === "OTHER") tc = "OTH";
   return (rows || []).filter(function (r) {
+    if (tc && tc !== "ALL") {
+      var t = String(r.type || rowTypeBucket(r) || "").toUpperCase();
+      if (t === "OTHER") t = "OTH";
+      if (t !== tc) return false;
+    }
     if (b && String(r.brand || "").toLowerCase() !== b) return false;
     if (!q) return true;
     var hay = (
@@ -1012,6 +1061,32 @@ export function filterSohLeftover(rows, query, brand) {
     ).toLowerCase();
     return hay.indexOf(q) >= 0;
   });
+}
+
+/**
+ * Counts of remaining SKUs + leftover qty per type bucket (for filter chips).
+ * @returns {{ ALL:{sku:number,qty:number}, STOCK:…, TESTER:…, GWPS:…, OTH:… }}
+ */
+export function sohLeftoverTypeCounts(rows) {
+  var out = {
+    ALL: { sku: 0, qty: 0 },
+    STOCK: { sku: 0, qty: 0 },
+    TESTER: { sku: 0, qty: 0 },
+    GWPS: { sku: 0, qty: 0 },
+    OTH: { sku: 0, qty: 0 },
+  };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    var left = Number(r.left) || 0;
+    var t = String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase();
+    if (t === "OTHER") t = "OTH";
+    if (!out[t]) t = "OTH";
+    out.ALL.sku += 1;
+    out.ALL.qty += left;
+    out[t].sku += 1;
+    out[t].qty += left;
+  });
+  return out;
 }
 
 export function packingCounterCheckStatusLabel(status) {
@@ -1656,6 +1731,7 @@ if (typeof window !== "undefined") {
     formatPackingSohLastStatus: formatPackingSohLastStatus,
     packingSohSummary: packingSohSummary,
     filterSohLeftover: filterSohLeftover,
+    sohLeftoverTypeCounts: sohLeftoverTypeCounts,
     packingCounterCheck: packingCounterCheck,
     packingCounterCheckStatusLabel: packingCounterCheckStatusLabel,
     packingCounterCheckShortName: packingCounterCheckShortName,
