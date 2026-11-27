@@ -50,6 +50,11 @@ import {
   counterCheckTypeCounts,
   counterCheckIssueCounts,
   filterCounterCheckRows,
+  SHADE_ABBREV,
+  textMatchesQuery,
+  shadePhraseInHay,
+  buildShadeMatchPlan,
+  parseShadeAbbrevToken,
   applyPackingOps,
   packingStaleVersion,
   packingActivePeers,
@@ -191,6 +196,105 @@ test("searchCatalog multi-word and fuzzy", () => {
   assert.equal(r.hits[0].row.sku, "EXT0029");
   r = searchCatalog(SAMPLE_ROWS, "hacivt", { limit: 5 });
   assert.ok(r.hits.some((h) => /HACIVAT/i.test(h.row.desc)));
+});
+
+test("shade abbrevs from catalog (MW/MC/LN) + number boundaries", () => {
+  assert.equal(SHADE_ABBREV.MW, "MEDIUM WARM");
+  assert.equal(SHADE_ABBREV.LN, "LIGHT NEUTRAL");
+  assert.equal(SHADE_ABBREV.DN, "DARK NEUTRAL");
+  assert.ok(!SHADE_ABBREV.LP); // LIGHT PINK pouch is not a shade
+
+  assert.equal(
+    shadePhraseInHay("REVEAL SKIN OPTIMIZING MEDIUM WARM 40 FOUNDATION REFILL TESTER 30ML", "medium warm", "40"),
+    true
+  );
+  assert.equal(
+    shadePhraseInHay("REVEAL SKIN OPTIMIZING MEDIUM WARM  55  FOUNDATION REFILL TESTER 30ML", "medium warm", "55"),
+    true
+  );
+  assert.equal(
+    shadePhraseInHay("REVEAL SKIN OPTIMIZING MEDIUM WARM 45 FOUNDATION", "medium warm", "40"),
+    false
+  );
+  assert.equal(
+    shadePhraseInHay("REVEAL SKIN OPTIMIZING MEDIUM WARM 140 FOUNDATION", "medium warm", "40"),
+    false
+  );
+  assert.equal(buildShadeMatchPlan("mw-40").hasShadeNum, true);
+  assert.equal(buildShadeMatchPlan("MW 40").expanded[0].phrase, "medium warm");
+
+  var shadeRows = [
+    {
+      sku: "LD978700",
+      brand: "PRADA",
+      desc: "PRADA REVEAL SKIN OPTIMIZING MEDIUM WARM 40 FOUNDATION REFILL 30ML",
+      eans: [],
+      codesU: ["LD978700"],
+    },
+    {
+      sku: "LD978800",
+      brand: "PRADA",
+      desc: "PRADA REVEAL SKIN OPTIMIZING MEDIUM WARM 55  FOUNDATION REFILL TESTER 30ML",
+      eans: [],
+      codesU: ["LD978800"],
+    },
+    {
+      sku: "LD571202",
+      brand: "PRADA",
+      desc: "PRADA REVEAL SKIN OPTIMIZING MEDIUM COOL 45 FOUNDATION 30ML",
+      eans: [],
+      codesU: ["LD571202"],
+    },
+    {
+      sku: "TLD00305",
+      brand: "PRADA",
+      desc: "PRADA REVEAL MESH CUSHION LIGHT NEUTRAL 5 FOUNDATION TESTER",
+      eans: [],
+      codesU: ["TLD00305"],
+    },
+    {
+      sku: "TLD00306",
+      brand: "PRADA",
+      desc: "PRADA REVEAL MESH CUSHION LIGHT NEUTRAL 10 FOUNDATION TESTER",
+      eans: [],
+      codesU: ["TLD00306"],
+    },
+    {
+      sku: "LE032200",
+      brand: "PRADA",
+      desc: "PRADA ROUGE MONOCHROME HYPER MATTE ARGILE B01 LIPSTICK",
+      eans: [],
+      codesU: ["LE032200", "B01"],
+    },
+  ];
+  shadeRows.forEach(function (r) {
+    r.hay = (r.sku + " " + r.brand + " " + r.desc).toLowerCase();
+  });
+
+  function skus(q) {
+    return searchCatalog(shadeRows, q, { limit: 20 }).hits.map((h) => h.row.sku).sort();
+  }
+
+  assert.deepEqual(skus("MW 40"), ["LD978700"]);
+  assert.deepEqual(skus("mw40"), ["LD978700"]);
+  assert.deepEqual(skus("MW-40"), ["LD978700"]);
+  assert.deepEqual(skus("reveal mw 40"), ["LD978700"]);
+  assert.deepEqual(skus("MC45"), ["LD571202"]);
+  assert.deepEqual(skus("mc 45"), ["LD571202"]);
+  assert.deepEqual(skus("LN").sort(), ["TLD00305", "TLD00306"]);
+  assert.ok(skus("reveal").includes("LD978700"));
+  assert.ok(skus("reveal").includes("LD571202"));
+
+  // Remaining / counter-check filter path
+  var left = shadeRows.map((r) => ({ sku: r.sku, desc: r.desc, brand: r.brand, barcode: "", left: 1 }));
+  assert.equal(filterSohLeftover(left, "MW 40", "", "ALL").map((r) => r.sku).join(), "LD978700");
+  assert.equal(filterSohLeftover(left, "LN", "", "ALL").length, 2);
+  assert.equal(textMatchesQuery(shadeRows[0].desc, "mw 40"), true);
+  assert.equal(textMatchesQuery(shadeRows[1].desc, "mw 40"), false);
+
+  // Literal lipstick codes still work (not treated as shade abbrev)
+  assert.ok(skus("B01").includes("LE032200"));
+  assert.equal(parseShadeAbbrevToken("B01"), null);
 });
 
 test("filterRowsByType", () => {

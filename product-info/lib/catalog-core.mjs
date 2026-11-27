@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127c";
+export var VERSION = "20261127d";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -103,6 +103,150 @@ export function parseSearchQty(text) {
   return { query: raw, qty: qty };
 }
 
+/**
+ * Shade abbreviations derived from live catalog depth×undertone phrases
+ * (Prada Reveal + Valentino cushions). Initials of each word; no collisions
+ * in current data. LIGHT PINK (POSM pouch) intentionally excluded — not a shade.
+ *
+ * Catalog coverage (approx rows matching the phrase):
+ *   LN LIGHT NEUTRAL 29 · LW LIGHT WARM 14 · LC LIGHT COOL 12
+ *   MN MEDIUM NEUTRAL 20 · MW MEDIUM WARM 13 · MC MEDIUM COOL 10
+ *   DN DARK NEUTRAL 6 · DW DARK WARM 3
+ */
+export var SHADE_ABBREV = {
+  LN: "LIGHT NEUTRAL",
+  LW: "LIGHT WARM",
+  LC: "LIGHT COOL",
+  MN: "MEDIUM NEUTRAL",
+  MW: "MEDIUM WARM",
+  MC: "MEDIUM COOL",
+  DN: "DARK NEUTRAL",
+  DW: "DARK WARM",
+};
+
+export function normalizeSearchText(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Parse a single token as shade abbrev (+ optional number): MW, mw40, MW-40. */
+export function parseShadeAbbrevToken(tok) {
+  var m = /^([a-z]{2,4})(?:[\s\-]?(\d{1,3}))?$/i.exec(String(tok || "").trim());
+  if (!m) return null;
+  var code = m[1].toUpperCase();
+  var phrase = SHADE_ABBREV[code];
+  if (!phrase) return null;
+  return { code: code, phrase: phrase, num: m[2] || null };
+}
+
+/**
+ * Build match plan: literal tokens (existing AND) + optional shade-expanded clauses.
+ * Coalesces "mw" + "40" → MEDIUM WARM 40; accepts "MW40" / "mw-40".
+ */
+export function buildShadeMatchPlan(query) {
+  var raw = normalizeSearchText(query);
+  var parts = raw ? raw.split(" ").filter(Boolean) : [];
+  var literalTokens = parts.slice();
+  var expanded = [];
+  var hasShade = false;
+  var hasShadeNum = false;
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var attached = parseShadeAbbrevToken(parts[i]);
+    if (attached && attached.num) {
+      expanded.push({
+        kind: "shade",
+        phrase: attached.phrase.toLowerCase(),
+        num: attached.num,
+        code: attached.code,
+      });
+      hasShade = true;
+      hasShadeNum = true;
+      continue;
+    }
+    if (attached && !attached.num) {
+      var next = parts[i + 1];
+      if (next && /^\d{1,3}$/.test(next)) {
+        expanded.push({
+          kind: "shade",
+          phrase: attached.phrase.toLowerCase(),
+          num: next,
+          code: attached.code,
+        });
+        hasShade = true;
+        hasShadeNum = true;
+        i++;
+        continue;
+      }
+      expanded.push({
+        kind: "shade",
+        phrase: attached.phrase.toLowerCase(),
+        num: null,
+        code: attached.code,
+      });
+      hasShade = true;
+      continue;
+    }
+    expanded.push({ kind: "word", text: parts[i] });
+  }
+  return {
+    literalTokens: literalTokens,
+    expanded: expanded,
+    hasShade: hasShade,
+    hasShadeNum: hasShadeNum,
+  };
+}
+
+/**
+ * Phrase (+ optional shade number) with word/digit boundaries.
+ * Number may sit immediately after OR before the phrase.
+ * MW 40 must not match MEDIUM WARM 45 / 140.
+ */
+export function shadePhraseInHay(hay, phrase, num) {
+  var h = normalizeSearchText(hay);
+  var esc = escapeRegExp(normalizeSearchText(phrase));
+  if (!esc) return false;
+  if (num != null && num !== "") {
+    var n = String(num);
+    var after = new RegExp("(?:^|[^a-z0-9])" + esc + " " + n + "(?![0-9])");
+    var before = new RegExp("(?:^|[^a-z0-9])" + n + " " + esc + "(?![a-z0-9])");
+    return after.test(h) || before.test(h);
+  }
+  return new RegExp("(?:^|[^a-z0-9])" + esc + "(?![a-z0-9])").test(h);
+}
+
+export function hayMatchesShadePlan(hay, plan) {
+  plan = plan || buildShadeMatchPlan("");
+  var h = normalizeSearchText(hay);
+  var litOk =
+    !plan.literalTokens.length ||
+    plan.literalTokens.every(function (t) {
+      return h.indexOf(t) >= 0;
+    });
+  var expOk =
+    !plan.expanded.length ||
+    plan.expanded.every(function (c) {
+      if (c.kind === "word") return h.indexOf(c.text) >= 0;
+      return shadePhraseInHay(h, c.phrase, c.num);
+    });
+  // Shade path only counts when we actually expanded something (else same as literal)
+  if (!plan.hasShade) expOk = litOk;
+  return { litOk: litOk, expOk: expOk, any: litOk || expOk };
+}
+
+/** Shared matcher for searchCatalog + Remaining/Counter filters. */
+export function textMatchesQuery(hay, query) {
+  var q = String(query || "").trim();
+  if (!q) return true;
+  return hayMatchesShadePlan(hay, buildShadeMatchPlan(q)).any;
+}
+
 export function editDistance(a, b) {
   a = String(a || "");
   b = String(b || "");
@@ -163,7 +307,7 @@ function rowHay(row) {
   ).toLowerCase();
 }
 
-function rankRow(row, qn, tokens, wantFuzzy) {
+function rankRow(row, qn, tokens, wantFuzzy, shadePlan) {
   var rank = 99;
   var cs = row.codesU || [String(row.sku || "").toUpperCase()];
   var j, c, rk;
@@ -183,17 +327,16 @@ function rankRow(row, qn, tokens, wantFuzzy) {
     if (e === qn) rank = Math.min(rank, 0);
     else if (e.indexOf(qn) === 0) rank = Math.min(rank, 1);
   }
-  if (tokens.length) {
-    var hay = row.hay || rowHay(row);
-    var all = true;
-    for (j = 0; j < tokens.length; j++) {
-      if (hay.indexOf(tokens[j]) < 0) {
-        all = false;
-        break;
-      }
+  var hay = row.hay || rowHay(row);
+  if (tokens.length || (shadePlan && shadePlan.hasShade)) {
+    var modes = hayMatchesShadePlan(hay, shadePlan || buildShadeMatchPlan(tokens.join(" ")));
+    if (modes.litOk) rank = Math.min(rank, 5);
+    if (modes.expOk && shadePlan && shadePlan.hasShade) {
+      // Shade expansion hit — same band as multi-word; tighter when number present
+      rank = Math.min(rank, shadePlan.hasShadeNum ? 5 : 5);
     }
-    if (all) rank = Math.min(rank, 5);
-    else if (tokens.length > 1 && rank >= 99) return 99;
+    if (!modes.any && tokens.length > 1 && rank >= 99) return 99;
+    if (!modes.any && shadePlan && shadePlan.hasShade && tokens.length && rank >= 99) return 99;
   }
   if (wantFuzzy && qn.length >= 4 && rank >= 99) {
     var words = String(row.desc || "")
@@ -236,12 +379,13 @@ export function searchCatalog(catalog, text, opts) {
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean);
+  var shadePlan = buildShadeMatchPlan(q);
   var wantFuzzy = qn.length >= 4 && !/^\d+$/.test(qn);
   var hits = [];
   var i, row, rank;
   for (i = 0; i < catalog.length; i++) {
     row = catalog[i];
-    rank = rankRow(row, qn, tokens, wantFuzzy);
+    rank = rankRow(row, qn, tokens, wantFuzzy, shadePlan);
     if (rank < 99) hits.push({ row: row, rank: rank });
   }
   hits.sort(function (a, b) {
@@ -1032,9 +1176,7 @@ export function packingCounterCheck(sohMap, pkBundles) {
  * else rowTypeBucket(row).
  */
 export function filterSohLeftover(rows, query, brand, typeCat) {
-  var q = String(query || "")
-    .trim()
-    .toLowerCase();
+  var q = String(query || "").trim();
   var b = String(brand || "")
     .trim()
     .toLowerCase();
@@ -1050,16 +1192,15 @@ export function filterSohLeftover(rows, query, brand, typeCat) {
     }
     if (b && String(r.brand || "").toLowerCase() !== b) return false;
     if (!q) return true;
-    var hay = (
+    var hay =
       String(r.sku || "") +
       " " +
       String(r.barcode || "") +
       " " +
       String(r.desc || "") +
       " " +
-      String(r.brand || "")
-    ).toLowerCase();
-    return hay.indexOf(q) >= 0;
+      String(r.brand || "");
+    return textMatchesQuery(hay, q);
   });
 }
 
@@ -1371,9 +1512,7 @@ export function counterCheckIssueCounts(rows) {
  */
 export function filterCounterCheckRows(rows, opts) {
   opts = opts || {};
-  var q = String(opts.query != null ? opts.query : opts.q || "")
-    .trim()
-    .toLowerCase();
+  var q = String(opts.query != null ? opts.query : opts.q || "").trim();
   var b = String(opts.brand || "")
     .trim()
     .toLowerCase();
@@ -1405,7 +1544,7 @@ export function filterCounterCheckRows(rows, opts) {
     }
     if (b && String(r.brand || "").toLowerCase() !== b) return false;
     if (!q) return true;
-    var hay = (
+    var hay =
       String(r.sku || "") +
       " " +
       String(r.barcode || "") +
@@ -1414,9 +1553,8 @@ export function filterCounterCheckRows(rows, opts) {
       " " +
       String(r.brand || "") +
       " " +
-      String(r.swapWith || "")
-    ).toLowerCase();
-    return hay.indexOf(q) >= 0;
+      String(r.swapWith || "");
+    return textMatchesQuery(hay, q);
   });
 }
 
@@ -2118,6 +2256,13 @@ if (typeof window !== "undefined") {
     formatSohPosBadge: formatSohPosBadge,
     formatPackingSohLastStatus: formatPackingSohLastStatus,
     packingSohSummary: packingSohSummary,
+    SHADE_ABBREV: SHADE_ABBREV,
+    normalizeSearchText: normalizeSearchText,
+    parseShadeAbbrevToken: parseShadeAbbrevToken,
+    buildShadeMatchPlan: buildShadeMatchPlan,
+    shadePhraseInHay: shadePhraseInHay,
+    hayMatchesShadePlan: hayMatchesShadePlan,
+    textMatchesQuery: textMatchesQuery,
     filterSohLeftover: filterSohLeftover,
     sohLeftoverTypeCounts: sohLeftoverTypeCounts,
     parseItemSize: parseItemSize,
