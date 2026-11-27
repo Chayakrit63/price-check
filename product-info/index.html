@@ -754,10 +754,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261125a"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261125a"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127a"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127a"></script>
 <script>
-var APP_VER="20261125a";
+var APP_VER="20261127a";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -2691,84 +2691,108 @@ function pkOpenSohLeftoverSheet(){
     var type=pkSohRowType(r);
     return Object.assign({}, r, {brand:pkSohBrandOf(r.sku, r.desc), type:type});
   });
-  var state={q:"", brand:"", typeCat:pkSohLeftTypeGet(), group:true};
+  var state={q:"", brand:"", typeCat:pkSohLeftTypeGet(), group:true, composing:false};
   var titleScope=maps.counterWide?"(counter)":"(ใบนี้)";
   var body=openSheet("ยังไม่แพ็ค · Remaining "+titleScope, (soh.asOf?("SOH ณ "+soh.asOf+" · "):"")+rows.length+" SKU");
+  // Shell once — never replace #soh-left-q on paint (focus/IME steal)
+  var shell=maps.counterWide
+    ?('<p class="ctr-check-note">นับทุกใบ PK ของ counter นี้ + ใบที่เปิด · All PKs for this counter. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter</button></p>')
+    :('<p class="ctr-check-note">นับเฉพาะใบแพ็คที่เปิดอยู่ · This open PK only. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter ทุกใบ</button></p>');
+  shell+='<div class="sc-chips soh-left-types" style="margin:0 0 10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch" id="soh-left-types"></div>';
+  shell+='<label class="fl" style="margin:0 0 8px"><span>ค้นหา · Search</span><input id="soh-left-q" value="" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
+  shell+='<div class="sc-chips" style="margin:0 0 10px" id="soh-left-brands"></div>';
+  shell+='<p class="ctr-check-note" style="margin:0 0 8px" id="soh-left-filt"></p>';
+  shell+='<div id="soh-left-list"></div>';
+  body.innerHTML=shell;
+  var toCtr=$("soh-left-to-ctr");
+  if(toCtr) toCtr.onclick=function(e){e.preventDefault();e.stopPropagation();closeSheet(false);pkOpenCounterCheck(b.from);};
+  var qel=$("soh-left-q");
+  function schedulePaint(){
+    clearTimeout(paint.t);
+    paint.t=setTimeout(function(){ if(!state.composing) paint(); },180);
+  }
+  if(qel){
+    qel.addEventListener("compositionstart", function(){ state.composing=true; });
+    qel.addEventListener("compositionend", function(){ state.composing=false; state.q=qel.value; schedulePaint(); });
+    qel.addEventListener("input", function(){ state.q=qel.value; if(!state.composing) schedulePaint(); });
+    qel.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); state.q=qel.value; paint(); } });
+  }
+  var typeChips=$("soh-left-types");
+  if(typeChips) typeChips.onclick=function(ev){
+    var btn=ev.target.closest("button[data-t]"); if(!btn) return;
+    state.typeCat=pkSohLeftTypeSet(btn.getAttribute("data-t")||"ALL");
+    state.brand="";
+    paint();
+  };
+  var brandChips=$("soh-left-brands");
+  if(brandChips) brandChips.onclick=function(ev){
+    var btn=ev.target.closest("button[data-b]"); if(!btn) return;
+    state.brand=btn.getAttribute("data-b")||"";
+    paint();
+  };
+  var listEl=$("soh-left-list");
+  if(listEl) listEl.onclick=function(ev){
+    var btn=ev.target.closest(".soh-left-item"); if(!btn||!listEl.contains(btn)) return;
+    var sku=btn.getAttribute("data-sku")||"";
+    closeSheet(false);
+    $("q").value=sku;
+    try{$("q").focus();}catch(e){}
+    hideSug();
+    runSuggest();
+  };
   function paint(){
     var typeCounts=sohLeftoverTypeCountsFn(rows);
     var filtered=filterSohLeftoverFn(rows, state.q, state.brand, state.typeCat);
     var brands={};
-    // Brand chips count within current type filter (search still applied separately on paint)
     filterSohLeftoverFn(rows, "", "", state.typeCat).forEach(function(r){var br=r.brand||"—"; brands[br]=(brands[br]||0)+1;});
     var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
-    var html=maps.counterWide
-      ?('<p class="ctr-check-note">นับทุกใบ PK ของ counter นี้ + ใบที่เปิด · All PKs for this counter. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter</button></p>')
-      :('<p class="ctr-check-note">นับเฉพาะใบแพ็คที่เปิดอยู่ · This open PK only. <button type="button" class="btn2" id="soh-left-to-ctr" style="width:auto;display:inline-block;margin:6px 0 0;padding:7px 12px;font-size:12.5px">🔎 ตรวจภาพรวม counter ทุกใบ</button></p>');
     var typeDefs=[["ALL","All"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"],["OTH","Other"]];
-    html+='<div class="sc-chips soh-left-types" style="margin:0 0 10px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch" id="soh-left-types">'+
-      typeDefs.map(function(x){
+    var typesHost=$("soh-left-types");
+    if(typesHost){
+      typesHost.innerHTML=typeDefs.map(function(x){
         var c=typeCounts[x[0]]||{sku:0,qty:0};
         var lab=x[1]+" "+c.sku+(c.qty?" · "+c.qty:"");
         return '<button type="button" data-t="'+x[0]+'" class="'+(state.typeCat===x[0]?"on":"")+'">'+lab+'</button>';
-      }).join("")+
-      '</div>';
-    html+='<label class="fl" style="margin:0 0 8px"><span>ค้นหา · Search</span><input id="soh-left-q" value="'+esc(state.q)+'" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
-    if(brandKeys.length>1){
-      html+='<div class="sc-chips" style="margin:0 0 10px" id="soh-left-brands">'+
-        '<button type="button" data-b="" class="'+(state.brand?"":"on")+'">ทั้งหมด</button>'+
-        brandKeys.slice(0,12).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("")+
-        '</div>';
+      }).join("");
+    }
+    var brandsHost=$("soh-left-brands");
+    if(brandsHost){
+      if(brandKeys.length>1){
+        brandsHost.style.display="";
+        brandsHost.innerHTML='<button type="button" data-b="" class="'+(state.brand?"":"on")+'">ทั้งหมด</button>'+
+          brandKeys.slice(0,12).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("");
+      }else{
+        brandsHost.innerHTML="";
+        brandsHost.style.display="none";
+      }
     }
     var filtNote=filtered.length+" / "+rows.length+" SKU";
     if(state.typeCat&&state.typeCat!=="ALL"){
       var tc=typeCounts[state.typeCat]||{sku:0,qty:0};
       filtNote=filtered.length+" SKU · เหลือ "+(state.q||state.brand?filtered.reduce(function(n,r){return n+(Number(r.left)||0);},0):tc.qty)+" ชิ้น";
     }
-    html+='<p class="ctr-check-note" style="margin:0 0 8px">'+esc(filtNote)+'</p>';
+    var filtEl=$("soh-left-filt"); if(filtEl) filtEl.textContent=filtNote;
+    var listHtml="";
     if(!filtered.length){
-      html+='<div class="pk-empty" style="padding:18px 4px">'+(rows.length?'ไม่พบในตัวกรอง':'✓ pullback ครบตาม POS')+'</div>';
+      listHtml='<div class="pk-empty" style="padding:18px 4px">'+(rows.length?'ไม่พบในตัวกรอง':'✓ pullback ครบตาม POS')+'</div>';
     }else if(state.group&&brandKeys.length>1&&!state.brand){
       var by={};
       filtered.forEach(function(r){var br=r.brand||"—"; if(!by[br]) by[br]=[]; by[br].push(r);});
       Object.keys(by).sort(function(a,c){return by[c].length-by[a].length||a.localeCompare(c);}).forEach(function(br){
-        html+='<div class="soh-left-brand">'+esc(br)+' · '+by[br].length+'</div>';
+        listHtml+='<div class="soh-left-brand">'+esc(br)+' · '+by[br].length+'</div>';
         by[br].forEach(function(r){
-          html+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
+          listHtml+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
         });
       });
     }else{
       filtered.forEach(function(r){
-        html+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+(r.brand?" · "+esc(r.brand):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
+        listHtml+='<button type="button" class="soh-left-item" data-sku="'+esc(r.sku)+'"><div class="d">'+esc(r.desc||r.sku)+'</div><div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+(r.brand?" · "+esc(r.brand):"")+'</div><div class="l">เหลือ '+r.left+'</div></button>';
       });
     }
-    body.innerHTML=html;
-    var toCtr=$("soh-left-to-ctr");
-    if(toCtr) toCtr.onclick=function(e){e.preventDefault();e.stopPropagation();closeSheet(false);pkOpenCounterCheck(b.from);};
-    var qel=$("soh-left-q");
-    if(qel){
-      qel.oninput=function(){state.q=qel.value; clearTimeout(paint.t); paint.t=setTimeout(paint,180);};
-      qel.onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();state.q=qel.value;paint();}};
-    }
-    var typeChips=$("soh-left-types");
-    if(typeChips) typeChips.onclick=function(ev){
-      var btn=ev.target.closest("button[data-t]"); if(!btn) return;
-      state.typeCat=pkSohLeftTypeSet(btn.getAttribute("data-t")||"ALL");
-      state.brand=""; // reset brand when switching type
-      paint();
-    };
-    var chips=$("soh-left-brands");
-    if(chips) chips.onclick=function(ev){var btn=ev.target.closest("button[data-b]"); if(!btn)return; state.brand=btn.getAttribute("data-b")||""; paint();};
-    body.onclick=function(ev){
-      var btn=ev.target.closest(".soh-left-item"); if(!btn||!body.contains(btn)) return;
-      var sku=btn.getAttribute("data-sku")||"";
-      closeSheet(false);
-      $("q").value=sku;
-      try{$("q").focus();}catch(e){}
-      hideSug();
-      runSuggest();
-    };
+    var listHost=$("soh-left-list"); if(listHost) listHost.innerHTML=listHtml;
   }
   paint();
+  try{ if(qel) qel.focus(); }catch(e){}
 }
 function packingCounterCheckFn(sohMap, bundles){
   if(window.CatalogCore&&CatalogCore.packingCounterCheck) return CatalogCore.packingCounterCheck(sohMap, bundles);
@@ -3016,77 +3040,43 @@ function pkOpenCounterCheck(seedCounter){
     };
     $("ctr-check-ctr").onkeydown=function(e){if(e.key==="Enter"){e.preventDefault();state.counter=this.value.trim();run(false);}};
   }
-  function paintResult(){
-    var host=$("ctr-check-body"); if(!host) return;
-    if(state.loading){host.innerHTML='<div class="pk-empty" style="padding:18px 4px">กำลังโหลดใบแพ็ค + SOH…</div>';return;}
-    if(state.err==="STALE"||(state.err&&pkCatalogCoreStale())){
-      host.innerHTML=pkStaleCoreHtml("ctr-check-reload");
-      var rb=$("ctr-check-reload"); if(rb) rb.onclick=function(){pkReloadFresh();};
-      return;
+  state.composing=false;
+  function ensureCtrResultShell(host, totalsHtml){
+    if(host.querySelector("#ctr-check-q")&&host.querySelector("#ctr-check-list")){
+      var tot=host.querySelector(".ctr-check-tot"); if(tot) tot.innerHTML=totalsHtml;
+      return false; // already wired
     }
-    if(state.err){host.innerHTML='<div class="ctr-check-err">'+esc(state.err)+'</div>';return;}
-    if(!state.check){host.innerHTML='<div class="pk-empty" style="padding:12px 4px">กด «ตรวจ» เพื่อรวมทุกใบ PK ของ counter นี้</div>';return;}
-    var t=state.check.totals;
-    var rows;
-    if(state.tab==="over") rows=state.check.over;
-    else if(state.tab==="missing") rows=state.check.missing;
-    else if(state.tab==="done") rows=state.check.done;
-    else rows=state.check.leftover;
-    rows=rows.map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});});
-    rows=filterSohLeftoverFn(rows, state.q, state.brand);
-    var brands={};
-    (state.tab==="leftover"?state.check.leftover:state.tab==="over"?state.check.over:state.tab==="missing"?state.check.missing:state.check.done)
-      .forEach(function(r){var br=(r.brand||pkSohBrandOf(r.sku,r.desc)||"—"); brands[br]=(brands[br]||0)+1;});
-    var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
-    var html='<div class="ctr-check-tot">SOH ณ <b>'+esc(state.asOf||"—")+'</b> · <b>'+t.sohSkuCount+'</b> SKU · <b>'+t.sohPcs+'</b> ชิ้น<br>'+
-      'PK <b>'+t.pkCount+'</b>'+(state.includedOpen?' <span style="color:#9a5b00">· รวมใบที่เปิดอยู่</span>':'')+' · แพ็คแล้ว <b>'+t.packedPcs+'</b> ชิ้น<br>'+
-      'ครบ <b>'+t.doneSku+'</b> · เหลือ <b>'+t.leftoverSku+'</b> / '+t.leftoverPcs+' ชิ้น · เกิน <b>'+t.overSku+'</b> / '+t.overPcs+' ชิ้น · ไม่มีใน POS <b>'+t.missingSku+'</b></div>';
-    html+='<div class="ctr-check-tabs">'+
-      '<button type="button" data-tab="leftover" class="'+(state.tab==="leftover"?"on":"")+'">ยังไม่แพ็ค '+t.leftoverSku+'</button>'+
-      '<button type="button" data-tab="over" class="'+(state.tab==="over"?"on":"")+'">เกิน '+t.overSku+'</button>'+
-      '<button type="button" data-tab="missing" class="'+(state.tab==="missing"?"on":"")+'">ไม่มีใน POS '+t.missingSku+'</button>'+
-      '<button type="button" data-tab="done" class="'+(state.tab==="done"?"on":"")+'">ครบ '+t.doneSku+'</button>'+
-      '</div>';
-    html+='<label class="fl" style="margin:0 0 8px"><span>ค้นหา</span><input id="ctr-check-q" value="'+esc(state.q)+'" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>';
-    if(brandKeys.length>1){
-      html+='<div class="sc-chips" style="margin:0 0 10px" id="ctr-check-brands">'+
-        '<button type="button" data-b="" class="'+(state.brand?"":"on")+'">ทั้งหมด</button>'+
-        brandKeys.slice(0,14).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("")+
-        '</div>';
-    }
-    if(!rows.length){
-      html+='<div class="pk-empty" style="padding:16px 4px">'+(state.tab==="leftover"?'✓ pullback ครบตาม POS':'ไม่มีรายการในแท็บนี้')+'</div>';
-    }else{
-      rows.forEach(function(r){
-        var qtyLine=state.tab==="missing"
-          ?("แพ็ค "+r.packed+" · ไม่มีใน POS")
-          :(state.tab==="over"||r.status==="over"
-            ?("POS "+r.soh+" · แพ็ค "+r.packed+" · เกิน "+r.over)
-            :(state.tab==="done"
-              ?("✓ POS "+r.soh+" · แพ็ค "+r.packed)
-              :("POS "+r.soh+" · แพ็ค "+r.packed+" · เหลือ "+r.left)));
-        var showPk=!!state.showPks[r.sku];
-        html+='<button type="button" class="ctr-check-item" data-sku="'+esc(r.sku)+'" data-st="'+esc(r.status)+'">'+
-          '<div class="d">'+esc(r.desc||r.sku)+'</div>'+
-          '<div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+(r.brand?" · "+esc(r.brand):"")+'</div>'+
-          '<div class="l '+esc(r.status)+'">'+esc(qtyLine)+'</div>'+
-          (showPk&&r.boxNos&&r.boxNos.length?'<div class="ctr-check-pks">'+esc(r.boxNos.join(" · "))+'</div>':'')+
-          '</button>';
-      });
-    }
-    host.innerHTML=html;
-    host.querySelector(".ctr-check-tabs").onclick=function(ev){
+    host.innerHTML='<div class="ctr-check-tot">'+totalsHtml+'</div>'+
+      '<div class="ctr-check-tabs" id="ctr-check-tabs"></div>'+
+      '<label class="fl" style="margin:0 0 8px"><span>ค้นหา</span><input id="ctr-check-q" value="" placeholder="SKU / barcode / ชื่อ" autocomplete="off"></label>'+
+      '<div class="sc-chips" style="margin:0 0 10px" id="ctr-check-brands"></div>'+
+      '<div id="ctr-check-list"></div>';
+    var tabs=host.querySelector("#ctr-check-tabs");
+    if(tabs) tabs.onclick=function(ev){
       var btn=ev.target.closest("button[data-tab]"); if(!btn) return;
-      state.tab=btn.getAttribute("data-tab"); state.brand=""; state.q=""; paintResult();
+      state.tab=btn.getAttribute("data-tab"); state.brand=""; state.q="";
+      var qel=$("ctr-check-q"); if(qel) qel.value="";
+      paintResult();
     };
     var qel=$("ctr-check-q");
+    function schedule(){
+      clearTimeout(paintResult.t);
+      paintResult.t=setTimeout(function(){ if(!state.composing) paintResult(); },160);
+    }
     if(qel){
-      qel.oninput=function(){state.q=qel.value; clearTimeout(paintResult.t); paintResult.t=setTimeout(paintResult,160);};
+      qel.addEventListener("compositionstart", function(){ state.composing=true; });
+      qel.addEventListener("compositionend", function(){ state.composing=false; state.q=qel.value; schedule(); });
+      qel.addEventListener("input", function(){ state.q=qel.value; if(!state.composing) schedule(); });
     }
     var chips=$("ctr-check-brands");
-    if(chips) chips.onclick=function(ev){var btn=ev.target.closest("button[data-b]"); if(!btn)return; state.brand=btn.getAttribute("data-b")||""; paintResult();};
-    host.onclick=function(ev){
-      var btn=ev.target.closest(".ctr-check-item"); if(!btn||!host.contains(btn)) return;
+    if(chips) chips.onclick=function(ev){
+      var btn=ev.target.closest("button[data-b]"); if(!btn) return;
+      state.brand=btn.getAttribute("data-b")||"";
+      paintResult();
+    };
+    var list=$("ctr-check-list");
+    if(list) list.onclick=function(ev){
+      var btn=ev.target.closest(".ctr-check-item"); if(!btn||!list.contains(btn)) return;
       var sku=btn.getAttribute("data-sku")||"";
       var st=btn.getAttribute("data-st")||"";
       if(st==="over"){
@@ -3104,6 +3094,75 @@ function pkOpenCounterCheck(seedCounter){
         runSuggest();
       }
     };
+    return true;
+  }
+  function paintResult(){
+    var host=$("ctr-check-body"); if(!host) return;
+    if(state.loading){host.innerHTML='<div class="pk-empty" style="padding:18px 4px">กำลังโหลดใบแพ็ค + SOH…</div>';return;}
+    if(state.err==="STALE"||(state.err&&pkCatalogCoreStale())){
+      host.innerHTML=pkStaleCoreHtml("ctr-check-reload");
+      var rb=$("ctr-check-reload"); if(rb) rb.onclick=function(){pkReloadFresh();};
+      return;
+    }
+    if(state.err){host.innerHTML='<div class="ctr-check-err">'+esc(state.err)+'</div>';return;}
+    if(!state.check){host.innerHTML='<div class="pk-empty" style="padding:12px 4px">กด «ตรวจ» เพื่อรวมทุกใบ PK ของ counter นี้</div>';return;}
+    var t=state.check.totals;
+    var totalsHtml='SOH ณ <b>'+esc(state.asOf||"—")+'</b> · <b>'+t.sohSkuCount+'</b> SKU · <b>'+t.sohPcs+'</b> ชิ้น<br>'+
+      'PK <b>'+t.pkCount+'</b>'+(state.includedOpen?' <span style="color:#9a5b00">· รวมใบที่เปิดอยู่</span>':'')+' · แพ็คแล้ว <b>'+t.packedPcs+'</b> ชิ้น<br>'+
+      'ครบ <b>'+t.doneSku+'</b> · เหลือ <b>'+t.leftoverSku+'</b> / '+t.leftoverPcs+' ชิ้น · เกิน <b>'+t.overSku+'</b> / '+t.overPcs+' ชิ้น · ไม่มีใน POS <b>'+t.missingSku+'</b>';
+    ensureCtrResultShell(host, totalsHtml);
+    var rows;
+    if(state.tab==="over") rows=state.check.over;
+    else if(state.tab==="missing") rows=state.check.missing;
+    else if(state.tab==="done") rows=state.check.done;
+    else rows=state.check.leftover;
+    rows=rows.map(function(r){return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});});
+    rows=filterSohLeftoverFn(rows, state.q, state.brand);
+    var brands={};
+    (state.tab==="leftover"?state.check.leftover:state.tab==="over"?state.check.over:state.tab==="missing"?state.check.missing:state.check.done)
+      .forEach(function(r){var br=(r.brand||pkSohBrandOf(r.sku,r.desc)||"—"); brands[br]=(brands[br]||0)+1;});
+    var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
+    var tabs=$("ctr-check-tabs");
+    if(tabs){
+      tabs.innerHTML=
+        '<button type="button" data-tab="leftover" class="'+(state.tab==="leftover"?"on":"")+'">ยังไม่แพ็ค '+t.leftoverSku+'</button>'+
+        '<button type="button" data-tab="over" class="'+(state.tab==="over"?"on":"")+'">เกิน '+t.overSku+'</button>'+
+        '<button type="button" data-tab="missing" class="'+(state.tab==="missing"?"on":"")+'">ไม่มีใน POS '+t.missingSku+'</button>'+
+        '<button type="button" data-tab="done" class="'+(state.tab==="done"?"on":"")+'">ครบ '+t.doneSku+'</button>';
+    }
+    var chips=$("ctr-check-brands");
+    if(chips){
+      if(brandKeys.length>1){
+        chips.style.display="";
+        chips.innerHTML='<button type="button" data-b="" class="'+(state.brand?"":"on")+'">ทั้งหมด</button>'+
+          brandKeys.slice(0,14).map(function(br){return '<button type="button" data-b="'+esc(br)+'" class="'+(state.brand===br?"on":"")+'">'+esc(br)+' ('+brands[br]+')</button>';}).join("");
+      }else{
+        chips.innerHTML="";
+        chips.style.display="none";
+      }
+    }
+    var listHtml="";
+    if(!rows.length){
+      listHtml='<div class="pk-empty" style="padding:16px 4px">'+(state.tab==="leftover"?'✓ pullback ครบตาม POS':'ไม่มีรายการในแท็บนี้')+'</div>';
+    }else{
+      rows.forEach(function(r){
+        var qtyLine=state.tab==="missing"
+          ?("แพ็ค "+r.packed+" · ไม่มีใน POS")
+          :(state.tab==="over"||r.status==="over"
+            ?("POS "+r.soh+" · แพ็ค "+r.packed+" · เกิน "+r.over)
+            :(state.tab==="done"
+              ?("✓ POS "+r.soh+" · แพ็ค "+r.packed)
+              :("POS "+r.soh+" · แพ็ค "+r.packed+" · เหลือ "+r.left)));
+        var showPk=!!state.showPks[r.sku];
+        listHtml+='<button type="button" class="ctr-check-item" data-sku="'+esc(r.sku)+'" data-st="'+esc(r.status)+'">'+
+          '<div class="d">'+esc(r.desc||r.sku)+'</div>'+
+          '<div class="m">'+esc(r.sku)+(r.barcode?" · "+esc(r.barcode):"")+(r.brand?" · "+esc(r.brand):"")+'</div>'+
+          '<div class="l '+esc(r.status)+'">'+esc(qtyLine)+'</div>'+
+          (showPk&&r.boxNos&&r.boxNos.length?'<div class="ctr-check-pks">'+esc(r.boxNos.join(" · "))+'</div>':'')+
+          '</button>';
+      });
+    }
+    var list=$("ctr-check-list"); if(list) list.innerHTML=listHtml;
     var copyBtn=$("ctr-check-copy"); if(copyBtn) copyBtn.disabled=!state.check;
     var xlsxBtn=$("ctr-check-xlsx"); if(xlsxBtn) xlsxBtn.disabled=!state.check;
   }

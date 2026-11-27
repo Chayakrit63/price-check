@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261125a";
+export var VERSION = "20261127a";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
