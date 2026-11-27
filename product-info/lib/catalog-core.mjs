@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127f";
+export var VERSION = "20261127g";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -2383,6 +2383,177 @@ export function packingPeerBannerText(peers) {
   return "อีก " + n + " เครื่องกำลังแพ็คกล่องนี้";
 }
 
+/** Default packing-list QR payload budget (bytes). */
+export var PACK_QR_MAX = 2000;
+/** Clip length for product name on QR lines (after brand strip). */
+export var PACK_QR_DESC_CLIP = 28;
+
+/** UTF-8 byte length (browser TextEncoder or encodeURIComponent fallback). */
+export function utf8ByteLen(s) {
+  s = String(s == null ? "" : s);
+  try {
+    if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(s).length;
+  } catch (e) {}
+  try {
+    return unescape(encodeURIComponent(s)).length;
+  } catch (e2) {
+    return s.length;
+  }
+}
+
+/**
+ * Strip brand from a packing-line description for compact QR text.
+ * Prefer the line's brand field (multi-word brands stripped fully).
+ * Without brand, strip the leading token (common "BRAND NAME …" shape).
+ * Never returns empty when desc had content — falls back to original.
+ */
+export function stripBrandFromPackDesc(desc, brand) {
+  var raw = String(desc || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  var b = String(brand || "").replace(/\s+/g, " ").trim();
+  if (b) {
+    var re = new RegExp("^" + escapeRegExp(b) + "(?:\\s+|$)", "i");
+    var stripped = raw.replace(re, "").trim();
+    return stripped || raw;
+  }
+  var m = raw.match(/^(\S+)\s+(.+)$/);
+  if (m && m[2]) return m[2].trim() || raw;
+  return raw;
+}
+
+/** Clip description to maxLen chars (default 28), ellipsis when truncated. */
+export function clipPackQrDesc(s, maxLen) {
+  var lim = maxLen == null ? PACK_QR_DESC_CLIP : Number(maxLen) || PACK_QR_DESC_CLIP;
+  s = String(s || "").replace(/\s+/g, " ").trim();
+  if (s.length <= lim) return s;
+  if (lim <= 1) return "…";
+  return s.slice(0, lim - 1).trim() + "…";
+}
+
+/** Line id for QR: SKU, else EAN when not-in-master / missing SKU. */
+export function packQrLineId(line) {
+  var l = line || {};
+  var id = String(l.sku || "").trim();
+  if (!id || l.flag === "NOT IN MASTER") {
+    id = String(l.ean || l.barcode || id || "").trim() || "UNKNOWN";
+  }
+  return id;
+}
+
+/**
+ * One body line for packing QR.
+ * mode "desc" → `SKU xN clippedName`; mode "sku" → `SKU xN` only.
+ */
+export function formatPackQrLine(line, mode) {
+  var id = packQrLineId(line);
+  var qty = Number(line && line.qty) || 0;
+  var base = id + " x" + qty;
+  if (String(mode || "desc").toLowerCase() === "sku") return base;
+  var name = clipPackQrDesc(stripBrandFromPackDesc(line && line.desc, line && line.brand));
+  return name ? base + " " + name : base;
+}
+
+/**
+ * Build packing-list QR plaintext.
+ *
+ * Strategy (uniform format within one QR — never mix desc/sku lines):
+ * 1. Brand-stripped + 28-char clipped descriptions for every line.
+ * 2. If over maxBytes → every line SKU+qty only.
+ * 3. If still over → truncate with `...+N more`, then shorten To/From.
+ *
+ * @param {{
+ *   boxNo?: string,
+ *   boxSeq?: number,
+ *   boxCount?: number,
+ *   shipTo?: string,
+ *   from?: string,
+ *   refNo?: string,
+ * }} meta
+ * @param {Array<{sku?,ean?,barcode?,desc?,brand?,qty?,flag?}>} lines
+ * @param {number} [maxBytes]
+ * @param {(s:string)=>number} [utf8Len] byte-length fn (defaults to utf8ByteLen)
+ * @returns {string}
+ */
+export function buildPackQrText(meta, lines, maxBytes, utf8Len) {
+  meta = meta || {};
+  var cap = maxBytes == null ? PACK_QR_MAX : Number(maxBytes) || PACK_QR_MAX;
+  var len = typeof utf8Len === "function" ? utf8Len : utf8ByteLen;
+  var items = (lines || []).filter(function (l) {
+    return (Number(l && l.qty) || 0) > 0;
+  });
+  var skuCount = items.length;
+  var pcs = items.reduce(function (n, l) {
+    return n + (Number(l.qty) || 0);
+  }, 0);
+  var ref = String(meta.refNo || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  var boxNo = String(meta.boxNo || "").trim();
+  var k = Math.round(Number(meta.boxSeq != null ? meta.boxSeq : meta.activeBox) || 1) || 1;
+  var n = Math.round(Number(meta.boxCount != null ? meta.boxCount : 1) || 1) || 1;
+  var first = boxNo ? boxNo + " BOX " + k + "/" + n : "";
+  var ship = String(meta.shipTo || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  var from = String(meta.from || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  var foot = "Total " + skuCount + " SKU / " + pcs + " pcs";
+
+  function headOf(sh, fr) {
+    var h = [];
+    if (first) h.push(first);
+    h.push("To: " + sh);
+    if (fr) h.push("From: " + fr);
+    if (ref) h.push("Ref/GRF: " + ref);
+    return h.join("\n") + "\n\n";
+  }
+
+  function bodyLines(mode) {
+    return items.map(function (l) {
+      return formatPackQrLine(l, mode);
+    });
+  }
+
+  function build(body, take, sh, fr) {
+    var more = body.length - take;
+    var mid = body.slice(0, take);
+    if (more > 0) mid.push("...+" + more + " more");
+    return headOf(sh, fr) + (mid.length ? mid.join("\n") + "\n" : "") + foot;
+  }
+
+  function fitOrTruncate(body, sh0, fr0) {
+    var sh = sh0;
+    var fr = fr0;
+    var text = build(body, body.length, sh, fr);
+    if (len(text) <= cap) return text;
+    var take = body.length;
+    while (take > 0 && len(build(body, take, sh, fr)) > cap) take--;
+    text = build(body, take, sh, fr);
+    var orig = sh;
+    var origF = fr;
+    while (sh.length > 8 && len(text) > cap) {
+      sh = sh.slice(0, Math.max(8, sh.length - 8)).trim();
+      text = build(body, take, sh + (sh.length < orig.length ? "…" : ""), fr);
+    }
+    while (fr.length > 8 && len(text) > cap) {
+      fr = fr.slice(0, Math.max(8, fr.length - 8)).trim();
+      text = build(body, take, sh, fr + (fr.length < origF.length ? "…" : ""));
+    }
+    return text;
+  }
+
+  var descBody = bodyLines("desc");
+  var withDesc = build(descBody, descBody.length, ship, from);
+  if (len(withDesc) <= cap) return withDesc;
+
+  var skuBody = bodyLines("sku");
+  var withSku = build(skuBody, skuBody.length, ship, from);
+  if (len(withSku) <= cap) return withSku;
+
+  return fitOrTruncate(skuBody, ship, from);
+}
+
 /**
  * Check one SKU against SOH.
  * @returns {{ status: 'ok'|'missing'|'over', packed: number, soh: number, warn?: string }}
@@ -2554,6 +2725,14 @@ if (typeof window !== "undefined") {
     packingStaleVersion: packingStaleVersion,
     packingActivePeers: packingActivePeers,
     packingPeerBannerText: packingPeerBannerText,
+    PACK_QR_MAX: PACK_QR_MAX,
+    PACK_QR_DESC_CLIP: PACK_QR_DESC_CLIP,
+    utf8ByteLen: utf8ByteLen,
+    stripBrandFromPackDesc: stripBrandFromPackDesc,
+    clipPackQrDesc: clipPackQrDesc,
+    packQrLineId: packQrLineId,
+    formatPackQrLine: formatPackQrLine,
+    buildPackQrText: buildPackQrText,
     buildPackingDeltaOp: buildPackingDeltaOp,
     stripBarcodeRaw: stripBarcodeRaw,
     gtinChecksumOk: gtinChecksumOk,

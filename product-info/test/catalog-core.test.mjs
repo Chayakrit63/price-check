@@ -74,6 +74,13 @@ import {
   packingCounterPackedMap,
   packingMergeCounterPacked,
   packingSohSummaryFromPacked,
+  stripBrandFromPackDesc,
+  clipPackQrDesc,
+  formatPackQrLine,
+  buildPackQrText,
+  utf8ByteLen,
+  PACK_QR_MAX,
+  PACK_QR_DESC_CLIP,
 } from "../lib/catalog-core.mjs";
 
 test("CatalogCore VERSION is a non-empty release id", () => {
@@ -83,6 +90,7 @@ test("CatalogCore VERSION is a non-empty release id", () => {
   assert.equal(typeof buildCounterCheckExcelData, "function");
   assert.equal(typeof applyPackingOps, "function");
   assert.equal(typeof formatPackingSohLineDetailed, "function");
+  assert.equal(typeof buildPackQrText, "function");
 });
 
 const SAMPLE_ROWS = [
@@ -938,7 +946,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127f");
+  assert.equal(VERSION, "20261127g");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1258,4 +1266,153 @@ test("formatPackingSohLineDetailed counter-wide + this-box; over in red", () => 
   assert.equal(sum.leftoverSku, 1); // A left 2
   assert.equal(sum.doneSku, 2); // B exact + C over counts as done (>=)
   assert.equal(sum.overSku, 1); // C 2>1
+});
+
+test("stripBrandFromPackDesc + clipPackQrDesc", () => {
+  assert.equal(PACK_QR_DESC_CLIP, 28);
+  assert.equal(PACK_QR_MAX, 2000);
+  assert.equal(
+    stripBrandFromPackDesc("PRADA UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G", "PRADA"),
+    "UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G"
+  );
+  assert.equal(
+    stripBrandFromPackDesc(
+      "GIORGIO ARMANI SI PASSIONE EDP 100ML",
+      "GIORGIO ARMANI"
+    ),
+    "SI PASSIONE EDP 100ML"
+  );
+  assert.equal(
+    stripBrandFromPackDesc(
+      "YVES SAINT LAURENT LIBRE EDP 90ML",
+      "YVES SAINT LAURENT"
+    ),
+    "LIBRE EDP 90ML"
+  );
+  // brand equals whole desc → keep original (never empty)
+  assert.equal(stripBrandFromPackDesc("PRADA", "PRADA"), "PRADA");
+  // no brand field → strip leading token
+  assert.equal(
+    stripBrandFromPackDesc("PRADA UNIVERSAL U001 BLUE LIP BALM", ""),
+    "UNIVERSAL U001 BLUE LIP BALM"
+  );
+  var long =
+    "UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G EXTRA WORDS";
+  var clipped = clipPackQrDesc(long);
+  assert.ok(clipped.length <= 28);
+  assert.match(clipped, /…$/);
+  assert.equal(
+    formatPackQrLine(
+      {
+        sku: "LE901900",
+        qty: 4,
+        brand: "PRADA",
+        desc: "PRADA UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G",
+      },
+      "desc"
+    ),
+    "LE901900 x4 " + clipPackQrDesc("UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G")
+  );
+  assert.equal(
+    formatPackQrLine({ sku: "LE901900", qty: 4, desc: "PRADA FOO", brand: "PRADA" }, "sku"),
+    "LE901900 x4"
+  );
+});
+
+test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
+  assert.equal(VERSION, "20261127g");
+  var meta = {
+    boxNo: "PK-261127-001",
+    boxSeq: 1,
+    boxCount: 1,
+    shipTo: "CENTRAL CHIDLOM - PRADA",
+    from: "WH PRESTIGE",
+    refNo: "GRF-1",
+  };
+
+  var tiny = [
+    {
+      sku: "A1",
+      qty: 2,
+      brand: "PRADA",
+      desc: "PRADA UNIVERSAL U001 BLUE LIP BALM TESTER 3.8G",
+    },
+    {
+      sku: "B2",
+      qty: 1,
+      brand: "GIORGIO ARMANI",
+      desc: "GIORGIO ARMANI SI PASSIONE EDP 100ML",
+    },
+  ];
+  var tinyText = buildPackQrText(meta, tiny, PACK_QR_MAX, utf8ByteLen);
+  assert.match(tinyText, /^PK-261127-001 BOX 1\/1\n/);
+  assert.match(tinyText, /To: CENTRAL CHIDLOM - PRADA/);
+  assert.match(tinyText, /From: WH PRESTIGE/);
+  assert.match(tinyText, /Ref\/GRF: GRF-1/);
+  assert.match(tinyText, /Total 2 SKU \/ 3 pcs/);
+  assert.match(tinyText, /A1 x2 UNIVERSAL/);
+  assert.match(tinyText, /B2 x1 SI PASSIONE/);
+  assert.equal(tinyText.includes("more"), false);
+  assert.ok(utf8ByteLen(tinyText) <= PACK_QR_MAX);
+
+  // 63 SKU / 109 pcs — long brand-prefixed descs force SKU-only mode
+  var lines63 = [];
+  var pcs = 0;
+  for (var i = 0; i < 63; i++) {
+    var q = i < 46 ? 2 : 1; // 46*2 + 17*1 = 92+17 = 109
+    pcs += q;
+    var sku = "LE" + String(900000 + i).slice(-6);
+    lines63.push({
+      sku: sku,
+      qty: q,
+      brand: "PRADA",
+      desc:
+        "PRADA UNIVERSAL U00" +
+        i +
+        " BLUE LIP BALM TESTER 3.8G LONG NAME " +
+        i,
+    });
+  }
+  assert.equal(lines63.length, 63);
+  assert.equal(pcs, 109);
+  var text63 = buildPackQrText(meta, lines63, PACK_QR_MAX, utf8ByteLen);
+  assert.ok(utf8ByteLen(text63) <= PACK_QR_MAX);
+  assert.match(text63, /Total 63 SKU \/ 109 pcs/);
+  assert.equal(text63.includes("more"), false);
+  // every SKU present; no descriptions (SKU-only — no space after qty)
+  for (var j = 0; j < 63; j++) {
+    var id = lines63[j].sku;
+    assert.match(text63, new RegExp(id + " x" + lines63[j].qty + "(?:\\n|$)"));
+    assert.equal(text63.includes("UNIVERSAL"), false);
+    assert.equal(text63.includes("PRADA UNIVERSAL"), false);
+  }
+  // uniform: no mixed desc lines
+  assert.equal(/\nLE\d+ x\d+ \S/.test(text63), false);
+
+  // 400 lines — SKU-only still too big → ...+N more
+  var lines400 = [];
+  for (var k = 0; k < 400; k++) {
+    lines400.push({
+      sku: "SKU" + String(k).padStart(4, "0"),
+      qty: 1,
+      brand: "X",
+      desc: "X PRODUCT " + k,
+    });
+  }
+  var text400 = buildPackQrText(
+    {
+      boxNo: "PK-BIG",
+      boxSeq: 1,
+      boxCount: 1,
+      shipTo: "SOME LONG DESTINATION NAME HERE",
+      from: "SOME LONG FROM COUNTER NAME",
+    },
+    lines400,
+    PACK_QR_MAX,
+    utf8ByteLen
+  );
+  assert.ok(utf8ByteLen(text400) <= PACK_QR_MAX);
+  assert.match(text400, /\.\.\.\+\d+ more/);
+  assert.match(text400, /Total 400 SKU \/ 400 pcs/);
+  assert.match(text400, /^PK-BIG BOX 1\/1\n/);
 });
