@@ -320,8 +320,11 @@ body.typing .tabbar{display:none}
 .ctr-check-tot{font:400 12.5px Prompt;color:#5a3a30;line-height:1.45;margin:0 0 10px}
 .ctr-check-tot b{color:#2a1a17;font-weight:600}
 .ctr-check-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
-.ctr-check-tabs button{border:1px solid #d8c29c;background:#fff;color:#8b0f14;border-radius:999px;padding:6px 10px;font:500 12px Prompt;cursor:pointer;line-height:1.2;white-space:nowrap}
-.ctr-check-tabs button.on{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.ctr-check-tabs button,.sc-chips button.ctr-check-chip{border:1px solid #d8c29c;background:#fff;color:#8b0f14;border-radius:14px;padding:5px 9px;font:500 12px Prompt;cursor:pointer;line-height:1.15;white-space:normal;text-align:center;flex:0 0 auto}
+.ctr-check-tabs button.on,.sc-chips button.ctr-check-chip.on{background:#8b0f14;color:#fff;border-color:#8b0f14}
+.ctr-check-chip-t{display:block;font:500 12px Prompt;white-space:nowrap}
+.ctr-check-chip-s{display:block;font:400 10px Prompt;opacity:.9;margin-top:1px;white-space:nowrap}
+.ctr-check-tabs button.on .ctr-check-chip-s,.sc-chips button.ctr-check-chip.on .ctr-check-chip-s{opacity:.88}
 .ctr-check-item{display:block;width:100%;text-align:left;border:1px solid #e3cfae;border-radius:12px;background:#fffdf9;padding:10px 12px;margin-bottom:8px;font:400 13px Prompt;color:#2a1a17;cursor:pointer}
 .ctr-check-item .d{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctr-check-item .m{font-size:11.5px;color:#9a8670;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -757,10 +760,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261127e"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261127e"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127f"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127f"></script>
 <script>
-var APP_VER="20261127e";
+var APP_VER="20261127f";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -2864,21 +2867,53 @@ function packingCounterCheckFn(sohMap, bundles){
   if(window.CatalogCore&&CatalogCore.packingCounterCheck) return CatalogCore.packingCounterCheck(sohMap, bundles);
   return null;
 }
-function enrichCounterCheckFn(check){
-  if(window.CatalogCore&&CatalogCore.enrichCounterCheck) return CatalogCore.enrichCounterCheck(check);
+function enrichCounterCheckFn(check, opts){
+  if(window.CatalogCore&&CatalogCore.enrichCounterCheck) return CatalogCore.enrichCounterCheck(check, opts);
   return check;
 }
 function filterCounterCheckRowsFn(rows, opts){
   if(window.CatalogCore&&CatalogCore.filterCounterCheckRows) return CatalogCore.filterCounterCheckRows(rows, opts);
   return rows||[];
 }
+function counterCheckRowStatsFn(rows, opts){
+  if(window.CatalogCore&&CatalogCore.counterCheckRowStats) return CatalogCore.counterCheckRowStats(rows, opts);
+  var out={sku:0,packed:0,remaining:0};
+  (rows||[]).forEach(function(r){
+    if(!r) return;
+    out.sku+=1;
+    out.packed+=(opts&&opts.useDraftPacked?Number(r.draftPacked):Number(r.packed))||0;
+    var left=Number(r.left); out.remaining+=left>0?left:0;
+  });
+  return out;
+}
+function formatCounterCheckChipLinesFn(label, stats){
+  if(window.CatalogCore&&CatalogCore.formatCounterCheckChipLines) return CatalogCore.formatCounterCheckChipLines(label, stats);
+  var s=stats||{sku:0,packed:0,remaining:0};
+  return {title:String(label||"")+" "+(s.sku||0), sub:"แพ็ค "+(s.packed||0)+" · เหลือ "+(s.remaining||0)};
+}
 function counterCheckTypeCountsFn(rows){
   if(window.CatalogCore&&CatalogCore.counterCheckTypeCounts) return CatalogCore.counterCheckTypeCounts(rows);
-  return {ALL:{sku:0,qty:0},STOCK:{sku:0,qty:0},TESTER:{sku:0,qty:0},GWPS:{sku:0,qty:0},OTH:{sku:0,qty:0}};
+  return {ALL:{sku:0,packed:0,remaining:0},STOCK:{sku:0,packed:0,remaining:0},TESTER:{sku:0,packed:0,remaining:0},GWPS:{sku:0,packed:0,remaining:0},OTH:{sku:0,packed:0,remaining:0}};
 }
 function counterCheckIssueCountsFn(rows){
   if(window.CatalogCore&&CatalogCore.counterCheckIssueCounts) return CatalogCore.counterCheckIssueCounts(rows);
-  return {ALL:{sku:0,qty:0},leftover:{sku:0,qty:0},over:{sku:0,qty:0},missing:{sku:0,qty:0},done:{sku:0,qty:0},swapped:{sku:0,qty:0}};
+  return {ALL:{sku:0,packed:0,remaining:0},leftover:{sku:0,packed:0,remaining:0},over:{sku:0,packed:0,remaining:0},missing:{sku:0,packed:0,remaining:0},done:{sku:0,packed:0,remaining:0},swapped:{sku:0,packed:0,remaining:0},notStarted:{sku:0,packed:0,remaining:0},partial:{sku:0,packed:0,remaining:0},nearDone:{sku:0,packed:0,remaining:0},unsaved:{sku:0,packed:0,remaining:0}};
+}
+function ctrCheckIssueDefs(){
+  if(window.CatalogCore&&CatalogCore.COUNTER_CHECK_ISSUE_DEFS) return CatalogCore.COUNTER_CHECK_ISSUE_DEFS;
+  return [
+    {key:"ALL",label:"All"},{key:"notStarted",label:"ยังไม่เริ่ม"},{key:"partial",label:"แพ็คบางส่วน"},
+    {key:"nearDone",label:"ใกล้ครบ"},{key:"leftover",label:"ขาด"},{key:"over",label:"เกิน"},
+    {key:"missing",label:"No POS"},{key:"done",label:"ครบ"},{key:"swapped",label:"สลับ"},{key:"unsaved",label:"ยังไม่บันทึก"}
+  ];
+}
+function ctrCheckTypeDefs(){
+  if(window.CatalogCore&&CatalogCore.COUNTER_CHECK_TYPE_DEFS) return CatalogCore.COUNTER_CHECK_TYPE_DEFS;
+  return [{key:"ALL",label:"All"},{key:"STOCK",label:"Stock"},{key:"TESTER",label:"Tester"},{key:"GWPS",label:"GWPs"},{key:"OTH",label:"Other"}];
+}
+function ctrCheckChipBtnHtml(attr, key, label, stats, on){
+  var lines=formatCounterCheckChipLinesFn(label, stats);
+  return '<button type="button" class="ctr-check-chip'+(on?" on":"")+'" '+attr+'="'+esc(key)+'"><span class="ctr-check-chip-t">'+esc(lines.title)+'</span><span class="ctr-check-chip-s">'+esc(lines.sub)+'</span></button>';
 }
 function buildCounterCheckExcelDataFn(opts){
   if(window.CatalogCore&&CatalogCore.buildCounterCheckExcelData) return CatalogCore.buildCounterCheckExcelData(opts);
@@ -3163,6 +3198,7 @@ function pkOpenCounterCheck(seedCounter){
       '<div class="sc-chips" style="margin:0 0 10px" id="ctr-check-brands"></div>'+
       '<p class="ctr-check-note" style="margin:0 0 8px" id="ctr-check-filt"></p>'+
       '<div id="ctr-check-list"></div>';
+    // chip rows stay horizontally scrollable on ~390px phones
     var types=$("ctr-check-types");
     if(types) types.onclick=function(ev){
       var btn=ev.target.closest("button[data-t]"); if(!btn) return;
@@ -3249,7 +3285,9 @@ function pkOpenCounterCheck(seedCounter){
       (t.swappedSku?' · สลับ <b>'+t.swappedSku+'</b>':'');
     ensureCtrResultShell(host, totalsHtml);
     var base=pkCtrCheckBaseRows();
-    var typeCounts=counterCheckTypeCountsFn(base);
+    // Cross-filter: group chips respect active issue; issue chips respect active group
+    var forTypeCounts=filterCounterCheckRowsFn(base, {typeCat:"ALL", issueCat:state.issueCat, query:"", brand:""});
+    var typeCounts=counterCheckTypeCountsFn(forTypeCounts);
     var forIssueCounts=filterCounterCheckRowsFn(base, {typeCat:state.typeCat, issueCat:"ALL", query:"", brand:""});
     var issueCounts=counterCheckIssueCountsFn(forIssueCounts);
     var rows=pkCtrCheckViewRows();
@@ -3257,27 +3295,16 @@ function pkOpenCounterCheck(seedCounter){
     filterCounterCheckRowsFn(base, {typeCat:state.typeCat, issueCat:state.issueCat, query:"", brand:""})
       .forEach(function(r){var br=(r.brand||"—"); brands[br]=(brands[br]||0)+1;});
     var brandKeys=Object.keys(brands).sort(function(a,c){return brands[c]-brands[a]||a.localeCompare(c);});
-    var typeDefs=[["ALL","All"],["STOCK","Stock"],["TESTER","Tester"],["GWPS","GWPs"],["OTH","Other"]];
     var typesHost=$("ctr-check-types");
     if(typesHost){
-      typesHost.innerHTML=typeDefs.map(function(x){
-        var c=typeCounts[x[0]]||{sku:0,qty:0};
-        return '<button type="button" data-t="'+x[0]+'" class="'+(state.typeCat===x[0]?"on":"")+'">'+x[1]+" "+c.sku+(c.qty?" · "+c.qty:"")+'</button>';
+      typesHost.innerHTML=ctrCheckTypeDefs().map(function(x){
+        return ctrCheckChipBtnHtml("data-t", x.key, x.label, typeCounts[x.key]||{sku:0,packed:0,remaining:0}, state.typeCat===x.key);
       }).join("");
     }
-    var issueDefs=[
-      ["ALL","All"],
-      ["leftover","ขาด"],
-      ["over","เกิน"],
-      ["missing","No POS"],
-      ["done","ครบ"],
-      ["swapped","สลับ"]
-    ];
     var issuesHost=$("ctr-check-issues");
     if(issuesHost){
-      issuesHost.innerHTML=issueDefs.map(function(x){
-        var c=issueCounts[x[0]]||{sku:0,qty:0};
-        return '<button type="button" data-i="'+x[0]+'" class="'+(state.issueCat===x[0]?"on":"")+'">'+x[1]+" "+c.sku+(c.qty?" · "+c.qty:"")+'</button>';
+      issuesHost.innerHTML=ctrCheckIssueDefs().map(function(x){
+        return ctrCheckChipBtnHtml("data-i", x.key, x.label, issueCounts[x.key]||{sku:0,packed:0,remaining:0}, state.issueCat===x.key);
       }).join("");
     }
     var chips=$("ctr-check-brands");
@@ -3292,7 +3319,10 @@ function pkOpenCounterCheck(seedCounter){
       }
     }
     var filtEl=$("ctr-check-filt");
-    if(filtEl) filtEl.textContent=rows.length+" / "+base.length+" SKU";
+    if(filtEl){
+      var viewStats=counterCheckRowStatsFn(rows, state.issueCat==="unsaved"?{useDraftPacked:true}:null);
+      filtEl.textContent=rows.length+" / "+base.length+" SKU · แพ็ค "+viewStats.packed+" · เหลือ "+viewStats.remaining+" ชิ้น";
+    }
     var listHtml="";
     if(!rows.length){
       listHtml='<div class="pk-empty" style="padding:16px 4px">'+(state.issueCat==="leftover"&&!state.q&&state.typeCat==="ALL"?'✓ pullback ครบตาม POS':'ไม่มีรายการในตัวกรอง')+'</div>';
@@ -3380,7 +3410,20 @@ function pkOpenCounterCheck(seedCounter){
           state.err=pkCatalogCoreStale()?"STALE":"คำนวณไม่ได้";
           paintResult(); return;
         }
-        check=enrichCounterCheckFn(check)||check;
+        var draftPacked={};
+        if(merged.includedOpen){
+          var openDraft=curBox();
+          if(openDraft){
+            var draftLines=packItemList(openDraft)||[];
+            if(window.CatalogCore&&CatalogCore.packingSkuQtyMap) draftPacked=CatalogCore.packingSkuQtyMap(draftLines);
+            else draftLines.forEach(function(l){
+              var sku=String((l&&l.sku)||"").trim().toUpperCase();
+              var q=Number(l&&l.qty)||0;
+              if(sku&&q>0) draftPacked[sku]=(draftPacked[sku]||0)+q;
+            });
+          }
+        }
+        check=enrichCounterCheckFn(check, {draftPacked:draftPacked})||check;
         // brand enrichment before swap labels stay intact
         (check.rows||[]).forEach(function(r){ if(!r.brand) r.brand=pkSohBrandOf(r.sku,r.desc); });
         var pkNos={};

@@ -49,6 +49,12 @@ import {
   enrichCounterCheck,
   counterCheckTypeCounts,
   counterCheckIssueCounts,
+  counterCheckRowStats,
+  counterCheckRowFlags,
+  counterCheckRowMatchesIssue,
+  formatCounterCheckChipLines,
+  normalizeCounterCheckIssueCat,
+  COUNTER_CHECK_ISSUE_DEFS,
   filterCounterCheckRows,
   SHADE_ABBREV,
   textMatchesQuery,
@@ -663,27 +669,36 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   assert.equal(summary["Included open draft"], "No");
 
   var allHeader = data.sheets[1].aoa[0];
-  assert.deepEqual(allHeader.slice(0, 6), ["Status", "Group", "Issue", "Brand", "SKU", "Barcode"]);
-  assert.ok(data.sheets[1].textCols.includes(4));
+  assert.deepEqual(allHeader.slice(0, 7), [
+    "Status",
+    "Group",
+    "Issue",
+    "Flags",
+    "Brand",
+    "SKU",
+    "Barcode",
+  ]);
   assert.ok(data.sheets[1].textCols.includes(5));
+  assert.ok(data.sheets[1].textCols.includes(6));
   assert.equal(data.sheets[1].freeze, true);
   assert.equal(data.sheets[1].autofilter, true);
 
   var allBody = data.sheets[1].aoa.slice(1);
-  var lead = allBody.find((r) => r[4] === "00LEAD");
+  var lead = allBody.find((r) => r[5] === "00LEAD");
   assert.ok(lead);
   assert.equal(lead[0], "ยังไม่แพ็ค");
   assert.equal(lead[2], "ขาด");
-  assert.equal(lead[5], "001234");
-  assert.equal(typeof lead[4], "string");
-  assert.equal(lead[7], 2);
-  assert.equal(lead[8], 1);
+  assert.match(String(lead[3]), /แพ็คบางส่วน/);
+  assert.equal(lead[6], "001234");
+  assert.equal(typeof lead[5], "string");
+  assert.equal(lead[8], 2);
   assert.equal(lead[9], 1);
+  assert.equal(lead[10], 1);
 
-  var over = allBody.find((r) => r[4] === "OVER1");
+  var over = allBody.find((r) => r[5] === "OVER1");
   assert.equal(over[0], "เกิน");
-  assert.equal(over[10], 1);
-  assert.match(String(over[12]), /PK-261122-007/);
+  assert.equal(over[11], 1);
+  assert.match(String(over[13]), /PK-261122-007/);
 
   var byPk = data.sheets[2].aoa;
   assert.equal(byPk[0][0], "PK no");
@@ -696,8 +711,20 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   assert.equal(byPk[1][8], 1); // Remaining = Left
 
   var statusNames = data.sheets.slice(3).map((s) => s.name);
-  assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ", "สลับ"]);
+  assert.deepEqual(statusNames, [
+    "ยังไม่เริ่ม",
+    "แพ็คบางส่วน",
+    "ใกล้ครบ",
+    "ยังไม่แพ็ค",
+    "เกิน",
+    "ไม่มีใน POS",
+    "ครบ",
+    "สลับ",
+    "ยังไม่บันทึก",
+  ]);
   assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
+  assert.equal(data.sheets.find((s) => s.name === "แพ็คบางส่วน").aoa.length, 2);
+  assert.equal(data.sheets.find((s) => s.name === "ใกล้ครบ").aoa.length, 2);
 });
 
 test("counter-check Excel: filter does not shrink All SKUs; -TST + done reconcile", () => {
@@ -762,7 +789,7 @@ test("counter-check Excel: filter does not shrink All SKUs; -TST + done reconcil
 
   var allBody = data.sheets.find((s) => s.name === "All SKUs").aoa.slice(1);
   assert.equal(allBody.length, check.rows.length);
-  var allPacked = allBody.reduce((n, r) => n + (Number(r[8]) || 0), 0);
+  var allPacked = allBody.reduce((n, r) => n + (Number(r[9]) || 0), 0);
   assert.equal(allPacked, 7);
   assert.equal(data.byPkPacked, 7);
   assert.equal(data.allPacked, 7);
@@ -793,10 +820,10 @@ test("counter-check Excel: filter does not shrink All SKUs; -TST + done reconcil
   assert.match(String(tstLine[8]), /^-1/);
 
   // -TST present on All SKUs as ไม่มีใน POS
-  var tstAll = allBody.find((r) => r[4] === "LG100600-TST");
+  var tstAll = allBody.find((r) => r[5] === "LG100600-TST");
   assert.ok(tstAll);
   assert.equal(tstAll[0], "ไม่มีใน POS");
-  assert.equal(tstAll[8], 1);
+  assert.equal(tstAll[9], 1);
 });
 
 test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
@@ -874,16 +901,20 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 
   var typeCounts = counterCheckTypeCounts(check.rows);
   assert.ok(typeCounts.ALL.sku >= 2);
+  assert.ok("packed" in typeCounts.ALL && "remaining" in typeCounts.ALL);
   var issueCounts = counterCheckIssueCounts(check.rows);
   assert.equal(issueCounts.leftover.sku, 1);
   assert.equal(issueCounts.over.sku, 1);
   assert.equal(issueCounts.swapped.sku, 2);
+  assert.equal(issueCounts.notStarted.sku, 1); // H3RH packed 0
 
   assert.equal(filterCounterCheckRows(check.rows, { issueCat: "swapped" }).length, 2);
   assert.equal(filterCounterCheckRows(check.rows, { issueCat: "leftover" }).length, 1);
   assert.equal(filterCounterCheckRows(check.rows, { typeCat: "STOCK", issueCat: "ALL" }).length, 2);
   assert.equal(packingCounterCheckIssueLabel("leftover"), "ขาด");
   assert.equal(packingCounterCheckIssueLabel("missing"), "No POS");
+  assert.equal(packingCounterCheckIssueLabel("notStarted"), "ยังไม่เริ่ม");
+  assert.equal(packingCounterCheckIssueLabel("partial"), "แพ็คบางส่วน");
 
   // Similar description, different barcodes — still a swap when sizes match
   var descPairs = detectCounterCheckSwaps([
@@ -905,6 +936,144 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
   assert.equal(descPairs.length, 1);
   assert.equal(descPairs[0].reason, "desc");
 });
+
+test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
+  assert.equal(VERSION, "20261127f");
+  assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
+  assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
+  assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
+
+  var soh = sohMapFromRows([
+    { sku: "A0", qty: 5, desc: "Not started STOCK", barcode: "a0" },
+    { sku: "B1", qty: 10, desc: "Partial STOCK", barcode: "b1" },
+    { sku: "C2", qty: 3, desc: "Near done left2", barcode: "c2" },
+    { sku: "D3", qty: 4, desc: "Done STOCK", barcode: "d3" },
+    { sku: "E4", qty: 2, desc: "Over STOCK", barcode: "e4" },
+    { sku: "T1", qty: 8, desc: "TESTER leftover", barcode: "t1" },
+  ]);
+  var bundles = [
+    {
+      boxNo: "PK-SAVED",
+      lines: [
+        { sku: "B1", qty: 3, desc: "Partial STOCK" },
+        { sku: "C2", qty: 1, desc: "Near done left2" },
+        { sku: "D3", qty: 4, desc: "Done STOCK" },
+        { sku: "E4", qty: 5, desc: "Over STOCK" },
+        { sku: "T1", qty: 2, desc: "TESTER leftover" },
+        { sku: "MISS1", qty: 2, desc: "No POS item" },
+      ],
+    },
+  ];
+  var draftPacked = packingSkuQtyMap([
+    { sku: "B1", qty: 1 },
+    { sku: "A0", qty: 0 }, // ignored
+    { sku: "NEW1", qty: 3 }, // draft-only; may not be in check until packed in bundles
+  ]);
+  // Include draft lines in check totals the way UI merges open draft
+  var withDraft = bundles.concat([
+    {
+      boxNo: "__open__",
+      lines: [
+        { sku: "B1", qty: 1, desc: "Partial STOCK" },
+        { sku: "NEW1", qty: 3, desc: "Draft only" },
+      ],
+    },
+  ]);
+  var check = enrichCounterCheck(packingCounterCheck(soh, withDraft), {
+    draftPacked: draftPacked,
+  });
+
+  // A0 not started; B1 partial (4/10); C2 nearDone (1 packed, left 2); D3 done; E4 over; T1 partial tester; NEW1+MISS1 missing
+  var a0 = check.rows.find((r) => r.sku === "A0");
+  var b1 = check.rows.find((r) => r.sku === "B1");
+  var c2 = check.rows.find((r) => r.sku === "C2");
+  assert.equal(a0.status, "leftover");
+  assert.equal(a0.packed, 0);
+  assert.equal(a0.left, 5);
+  assert.ok(counterCheckRowMatchesIssue(a0, "notStarted"));
+  assert.equal(counterCheckRowMatchesIssue(a0, "partial"), false);
+
+  assert.equal(b1.packed, 4);
+  assert.equal(b1.left, 6);
+  assert.ok(counterCheckRowMatchesIssue(b1, "partial"));
+  assert.equal(counterCheckRowMatchesIssue(b1, "nearDone"), false);
+  assert.equal(b1.draftPacked, 1);
+  assert.ok(counterCheckRowMatchesIssue(b1, "unsaved"));
+
+  assert.equal(c2.left, 2);
+  assert.ok(counterCheckRowMatchesIssue(c2, "nearDone"));
+  assert.ok(counterCheckRowMatchesIssue(c2, "partial"));
+  assert.deepEqual(counterCheckRowFlags(c2), ["แพ็คบางส่วน", "ใกล้ครบ"]);
+
+  var issues = counterCheckIssueCounts(check.rows);
+  assert.equal(issues.leftover.sku, issues.notStarted.sku + issues.partial.sku);
+  assert.equal(issues.notStarted.sku, 1); // A0
+  assert.ok(issues.partial.sku >= 2); // B1, C2, T1
+  assert.equal(issues.nearDone.sku, 1); // C2 only (left 2, packed>0)
+  var new1 = check.rows.find((r) => r.sku === "NEW1");
+  assert.ok(new1);
+  assert.equal(new1.status, "missing");
+  assert.equal(new1.draftPacked, 3);
+  assert.equal(issues.unsaved.sku, 2); // B1 + NEW1
+  assert.equal(issues.unsaved.packed, 1 + 3); // draft pcs, not total packed
+  assert.equal(issues.ALL.packed, check.totals.packedPcs);
+
+  var allStats = counterCheckRowStats(check.rows);
+  assert.equal(allStats.packed, check.totals.packedPcs);
+  assert.equal(allStats.remaining, check.totals.leftoverPcs);
+
+  var leftoverRows = filterCounterCheckRows(check.rows, { issueCat: "leftover" });
+  var leftoverStats = counterCheckRowStats(leftoverRows);
+  var lines = formatCounterCheckChipLines("ขาด", leftoverStats);
+  assert.match(lines.title, /^ขาด /);
+  assert.match(lines.sub, /^แพ็ค \d+ · เหลือ \d+$/);
+  assert.equal(leftoverStats.remaining, issues.leftover.remaining);
+
+  // Cross-filter: issue chips within Tester only
+  var testerOnly = filterCounterCheckRows(check.rows, {
+    typeCat: "TESTER",
+    issueCat: "ALL",
+  });
+  var testerIssues = counterCheckIssueCounts(testerOnly);
+  assert.equal(testerIssues.ALL.sku, 1);
+  assert.equal(testerIssues.partial.sku, 1);
+  assert.equal(testerIssues.notStarted.sku, 0);
+
+  // Group chips within ขาด
+  var shortOnly = filterCounterCheckRows(check.rows, {
+    typeCat: "ALL",
+    issueCat: "leftover",
+  });
+  var shortTypes = counterCheckTypeCounts(shortOnly);
+  assert.equal(shortTypes.ALL.sku, leftoverRows.length);
+  assert.ok(shortTypes.TESTER.sku >= 1);
+  assert.ok(shortTypes.STOCK.sku >= 1);
+
+  assert.equal(filterCounterCheckRows(check.rows, { issueCat: "ยังไม่เริ่ม" }).length, 1);
+  assert.equal(filterCounterCheckRows(check.rows, { issueCat: "ใกล้ครบ" }).length, 1);
+  assert.equal(filterCounterCheckRows(check.rows, { issueCat: "unsaved" }).length, 2);
+
+  var data = buildCounterCheckExcelData({
+    counter: "CHIP TEST",
+    check: check,
+    bundles: withDraft,
+    stamp: "20261127-1400",
+    includeStatusSheets: true,
+  });
+  var nearSheet = data.sheets.find((s) => s.name === "ใกล้ครบ");
+  assert.ok(nearSheet);
+  assert.equal(nearSheet.aoa.length, 2); // header + C2
+  var unsavedSheet = data.sheets.find((s) => s.name === "ยังไม่บันทึก");
+  assert.equal(unsavedSheet.aoa.length, 1 + 2);
+  var flagsIdx = data.sheets.find((s) => s.name === "All SKUs").aoa[0].indexOf("Flags");
+  assert.ok(flagsIdx >= 0);
+  var c2Excel = data.sheets
+    .find((s) => s.name === "All SKUs")
+    .aoa.slice(1)
+    .find((r) => r[5] === "C2");
+  assert.match(String(c2Excel[flagsIdx]), /ใกล้ครบ/);
+});
+
 test("applyPackingOps: concurrent deltas merge; duplicate opId ignored; negative deltas", () => {
   var base = [
     { sku: "A", ean: "1", desc: "Item A", brand: "X", qty: 2, boxSeq: 1, k: "S:A" },
