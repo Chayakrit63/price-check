@@ -760,10 +760,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261127f"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261127f"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127g"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127g"></script>
 <script>
-var APP_VER="20261127f";
+var APP_VER="20261127g";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -4915,16 +4915,20 @@ function fitLabel(){
 }
 var QR_MAX=2000;
 function utf8Len(s){
+  if(window.CatalogCore&&CatalogCore.utf8ByteLen) return CatalogCore.utf8ByteLen(s);
   try{return new TextEncoder().encode(s).length;}catch(e){return unescape(encodeURIComponent(s)).length;}
 }
 function clipDesc(s){
+  if(window.CatalogCore&&CatalogCore.clipPackQrDesc) return CatalogCore.clipPackQrDesc(s);
   s=String(s||"").replace(/\s+/g," ").trim();
   return s.length<=28?s:s.slice(0,27).trim()+"…";
 }
 function packLineText(l){
+  if(window.CatalogCore&&CatalogCore.formatPackQrLine) return CatalogCore.formatPackQrLine(l, "desc");
   var id=String(l.sku||"").trim();
   if(!id||l.flag==="NOT IN MASTER") id=String(l.ean||id||"").trim()||"UNKNOWN";
-  return id+" x"+(Number(l.qty)||0)+" "+clipDesc(l.desc);
+  var name=clipDesc(l.desc);
+  return id+" x"+(Number(l.qty)||0)+(name?" "+name:"");
 }
 function packItems(b){
   if(!b) return [];
@@ -4935,14 +4939,26 @@ function packItems(b){
 }
 function packQrText(b,maxBytes){
   b=b||{}; maxBytes=maxBytes||QR_MAX;
-  var items=packItems(b), t={lines:items.filter(function(l){return (Number(l.qty)||0)>0;}).length, qty:items.reduce(function(a,l){return a+(Number(l.qty)||0);},0)};
+  var items=packItems(b);
+  var meta={
+    boxNo:b.boxNo,
+    boxSeq:activeBoxOf(b),
+    boxCount:boxCountOf(b),
+    shipTo:b.shipTo,
+    from:b.from,
+    refNo:b.refNo
+  };
+  if(window.CatalogCore&&CatalogCore.buildPackQrText)
+    return CatalogCore.buildPackQrText(meta, items, maxBytes, utf8Len);
+  // Fallback if core stale: desc lines only + truncate (no SKU-only step)
+  var body=items.map(packLineText);
+  var t={lines:items.filter(function(l){return (Number(l.qty)||0)>0;}).length, qty:items.reduce(function(a,l){return a+(Number(l.qty)||0);},0)};
   var ref=String(b.refNo||"").replace(/\s+/g," ").trim();
   var boxNo=String(b.boxNo||"").trim();
   var k=activeBoxOf(b), n=boxCountOf(b);
   var first=boxNo?(boxNo+" BOX "+k+"/"+n):"";
   var ship=String(b.shipTo||"").replace(/\s+/g," ").trim();
   var from=String(b.from||"").replace(/\s+/g," ").trim();
-  var body=items.map(packLineText);
   var foot="Total "+t.lines+" SKU / "+t.qty+" pcs";
   function headOf(sh, fr){
     var h=[first,"To: "+sh];
@@ -4950,24 +4966,24 @@ function packQrText(b,maxBytes){
     if(ref) h.push("Ref/GRF: "+ref);
     return h.join("\n")+"\n\n";
   }
-  function build(n,sh,fr){
-    var more=body.length-n, mid=body.slice(0,n);
+  function build(take,sh,fr){
+    var more=body.length-take, mid=body.slice(0,take);
     if(more>0) mid.push("...+"+more+" more");
     return headOf(sh,fr)+(mid.length?mid.join("\n")+"\n":"")+foot;
   }
   var text=build(body.length,ship,from);
   if(utf8Len(text)<=maxBytes) return text;
-  var n=body.length;
-  while(n>0&&utf8Len(build(n,ship,from))>maxBytes) n--;
-  text=build(n,ship,from);
+  var take=body.length;
+  while(take>0&&utf8Len(build(take,ship,from))>maxBytes) take--;
+  text=build(take,ship,from);
   var orig=ship, origF=from;
   while(ship.length>8&&utf8Len(text)>maxBytes){
     ship=ship.slice(0,Math.max(8,ship.length-8)).trim();
-    text=build(n,ship+(ship.length<orig.length?"…":""),from);
+    text=build(take,ship+(ship.length<orig.length?"…":""),from);
   }
   while(from.length>8&&utf8Len(text)>maxBytes){
     from=from.slice(0,Math.max(8,from.length-8)).trim();
-    text=build(n,ship,from+(from.length<origF.length?"…":""));
+    text=build(take,ship,from+(from.length<origF.length?"…":""));
   }
   return text;
 }
