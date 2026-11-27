@@ -39,9 +39,17 @@ import {
   sohLeftoverTypeCounts,
   packingCounterCheck,
   packingCounterCheckStatusLabel,
+  packingCounterCheckIssueLabel,
   packingCounterCheckShortName,
   packingCounterCheckExportStamp,
   buildCounterCheckExcelData,
+  parseItemSize,
+  descsVerySimilar,
+  detectCounterCheckSwaps,
+  enrichCounterCheck,
+  counterCheckTypeCounts,
+  counterCheckIssueCounts,
+  filterCounterCheckRows,
   applyPackingOps,
   packingStaleVersion,
   packingActivePeers,
@@ -551,26 +559,27 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   assert.equal(summary["Included open draft"], "No");
 
   var allHeader = data.sheets[1].aoa[0];
-  assert.deepEqual(allHeader.slice(0, 4), ["Status", "Brand", "SKU", "Barcode"]);
-  assert.ok(data.sheets[1].textCols.includes(2));
-  assert.ok(data.sheets[1].textCols.includes(3));
+  assert.deepEqual(allHeader.slice(0, 6), ["Status", "Group", "Issue", "Brand", "SKU", "Barcode"]);
+  assert.ok(data.sheets[1].textCols.includes(4));
+  assert.ok(data.sheets[1].textCols.includes(5));
   assert.equal(data.sheets[1].freeze, true);
   assert.equal(data.sheets[1].autofilter, true);
 
   var allBody = data.sheets[1].aoa.slice(1);
-  var lead = allBody.find((r) => r[2] === "00LEAD");
+  var lead = allBody.find((r) => r[4] === "00LEAD");
   assert.ok(lead);
   assert.equal(lead[0], "ยังไม่แพ็ค");
-  assert.equal(lead[3], "001234");
-  assert.equal(typeof lead[2], "string");
-  assert.equal(lead[5], 2);
-  assert.equal(lead[6], 1);
-  assert.equal(lead[7], 1);
+  assert.equal(lead[2], "ขาด");
+  assert.equal(lead[5], "001234");
+  assert.equal(typeof lead[4], "string");
+  assert.equal(lead[7], 2);
+  assert.equal(lead[8], 1);
+  assert.equal(lead[9], 1);
 
-  var over = allBody.find((r) => r[2] === "OVER1");
+  var over = allBody.find((r) => r[4] === "OVER1");
   assert.equal(over[0], "เกิน");
-  assert.equal(over[8], 1);
-  assert.match(String(over[9]), /PK-261122-007/);
+  assert.equal(over[10], 1);
+  assert.match(String(over[12]), /PK-261122-007/);
 
   var byPk = data.sheets[2].aoa;
   assert.equal(byPk[0][0], "PK no");
@@ -580,8 +589,115 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
   assert.equal(byPk[1][6], 1);
 
   var statusNames = data.sheets.slice(3).map((s) => s.name);
-  assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ"]);
+  assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ", "สลับ"]);
   assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
+});
+
+test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
+  assert.deepEqual(parseItemSize("FM L'EAU D'HIVER PERFUME EDT 100ML SPRAY"), {
+    value: 100,
+    unit: "ML",
+    key: "100ML",
+  });
+  assert.deepEqual(parseItemSize("body cream 50 G"), { value: 50, unit: "G", key: "50G" });
+  assert.equal(parseItemSize("no size here"), null);
+  assert.equal(
+    descsVerySimilar(
+      "FM L'EAU D'HIVER PERFUME EDT 100ML SPRAY",
+      "FREDERIC MALLE L'EAU D'HIVER ASMB  EDT 100ML"
+    ),
+    true
+  );
+
+  var rows = [
+    {
+      sku: "H3RH010000",
+      desc: "FM L'EAU D'HIVER PERFUME EDT 100ML SPRAY",
+      barcode: "3700135001312",
+      status: "leftover",
+      soh: 2,
+      packed: 0,
+      left: 2,
+      over: 0,
+    },
+    {
+      sku: "H4GR010000",
+      desc: "FREDERIC MALLE L'EAU D'HIVER ASMB  EDT 100ML",
+      barcode: "3700135001312",
+      status: "over",
+      soh: 5,
+      packed: 6,
+      left: 0,
+      over: 1,
+    },
+    {
+      sku: "OTHER1",
+      desc: "UNRELATED EDT 100ML",
+      barcode: "999",
+      status: "leftover",
+      left: 1,
+      over: 0,
+    },
+  ];
+  var pairs = detectCounterCheckSwaps(rows);
+  assert.equal(pairs.length, 1);
+  assert.equal(pairs[0].reason, "barcode");
+  assert.equal(pairs[0].size, "100ML");
+  var skus = [pairs[0].a.sku, pairs[0].b.sku].sort();
+  assert.deepEqual(skus, ["H3RH010000", "H4GR010000"]);
+
+  var soh = sohMapFromRows([
+    { sku: "H3RH010000", qty: 2, desc: rows[0].desc, barcode: "3700135001312" },
+    { sku: "H4GR010000", qty: 5, desc: rows[1].desc, barcode: "3700135001312" },
+  ]);
+  var check = enrichCounterCheck(
+    packingCounterCheck(soh, [
+      { boxNo: "PK1", lines: [{ sku: "H4GR010000", qty: 6, barcode: "3700135001312", desc: rows[1].desc }] },
+    ])
+  );
+  assert.equal(check.totals.swappedSku, 2);
+  assert.equal(check.totals.swappedPairs, 1);
+  var short = check.rows.find((r) => r.sku === "H3RH010000");
+  var overR = check.rows.find((r) => r.sku === "H4GR010000");
+  assert.equal(short.status, "leftover");
+  assert.equal(overR.status, "over");
+  assert.equal(short.swapped, true);
+  assert.equal(short.swapWith, "H4GR010000");
+  assert.match(short.swapNote, /สลับกับ H4GR010000/);
+  assert.equal(overR.swapWith, "H3RH010000");
+
+  var typeCounts = counterCheckTypeCounts(check.rows);
+  assert.ok(typeCounts.ALL.sku >= 2);
+  var issueCounts = counterCheckIssueCounts(check.rows);
+  assert.equal(issueCounts.leftover.sku, 1);
+  assert.equal(issueCounts.over.sku, 1);
+  assert.equal(issueCounts.swapped.sku, 2);
+
+  assert.equal(filterCounterCheckRows(check.rows, { issueCat: "swapped" }).length, 2);
+  assert.equal(filterCounterCheckRows(check.rows, { issueCat: "leftover" }).length, 1);
+  assert.equal(filterCounterCheckRows(check.rows, { typeCat: "STOCK", issueCat: "ALL" }).length, 2);
+  assert.equal(packingCounterCheckIssueLabel("leftover"), "ขาด");
+  assert.equal(packingCounterCheckIssueLabel("missing"), "No POS");
+
+  // Similar description, different barcodes — still a swap when sizes match
+  var descPairs = detectCounterCheckSwaps([
+    {
+      sku: "A1",
+      desc: "NISHANE HACIVAT EDP 100ML",
+      barcode: "111",
+      status: "leftover",
+      left: 1,
+    },
+    {
+      sku: "B1",
+      desc: "NISHANE HACIVAT EXTRAIT 100ML",
+      barcode: "222",
+      status: "over",
+      over: 1,
+    },
+  ]);
+  assert.equal(descPairs.length, 1);
+  assert.equal(descPairs[0].reason, "desc");
 });
 test("applyPackingOps: concurrent deltas merge; duplicate opId ignored; negative deltas", () => {
   var base = [
