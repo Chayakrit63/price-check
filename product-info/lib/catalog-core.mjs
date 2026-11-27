@@ -19,7 +19,22 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127i";
+export var VERSION = "20261127j";
+
+/**
+ * Strong tester signals that may override a master group of STOCK
+ * (not override / GWPS / OTH). Whole-word TST — not inside TSTUDIO etc.
+ */
+function hasStrongTesterSignal(sku, desc) {
+  var s = String(sku || "")
+    .trim()
+    .toUpperCase();
+  var d = String(desc || "").toUpperCase();
+  if (/-TST$/.test(s)) return true;
+  if (/TESTER/.test(d)) return true;
+  if (/\bTST\b/.test(d)) return true;
+  return false;
+}
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -27,30 +42,45 @@ export var VERSION = "20261127i";
  * Priority (first match wins):
  * 1. Explicit override (stock-count groupOverride, etc.)
  * 2. Master Items `group` / category when present:
- *    - STOCK / TESTER / OTH → that bucket
+ *    - TESTER / OTH → that bucket
  *    - GWP, SAMP, MINI, PR GIFT, EXEC GIFT (and similar) → GWPS
- * 3. Derived from SKU / description when master group is empty/unknown:
- *    - Tester: desc/sku contains TESTER; SKU like T-… or ends with digit+F/T
+ *      (GWPS wins even if SKU ends with -TST)
+ *    - STOCK → TESTER when strong tester signals apply, else STOCK
+ * 3. Strong tester signals (also when master group empty/unknown):
+ *    - SKU ends with -TST (case-insensitive)
+ *    - desc contains TESTER
+ *    - desc contains whole-word TST (e.g. "Found. TST")
+ * 4. Derived from SKU / description when master group is empty/unknown:
+ *    - Tester: SKU like T-… or ends with digit+F/T; sku contains TESTER
  *    - GWPs: desc matches GWP, GIFT, POSM, SAMPLE/SAMP, TOTE BAG, WOVEN BAG
  *    - Other: TRAINING / FIXTURE / DISPLAY in desc
  *    - else Stock (normal saleable)
  *
  * Examples:
  * - STOCK: L3720002 "CACHAREL ANAIS ANAIS EDT 50ML" group=STOCK
+ * - TESTER: F8638900-TST "… Found. TST" group=STOCK (strong signal overrides STOCK)
  * - TESTER: T-EXT0029 "… TESTER 100ML" group=TESTER
- * - GWPS: "RED TOTE BAG GWP LARGE", "WOVEN BAG POSM MEDIUM", "EDP SAMPLE 2ML"
+ * - GWPs: "RED TOTE BAG GWP LARGE", "WOVEN BAG POSM MEDIUM", "EDP SAMPLE 2ML"
  * - OTH: 3111601-TRG "TRAINING" group=OTH
  */
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
-  var g = String(masterGroup || "").toUpperCase().trim();
-  if (g === "STOCK") return "STOCK";
+  var g = String(masterGroup || "")
+    .toUpperCase()
+    .trim();
   if (g === "TESTER") return "TESTER";
   if (g === "OTH" || g === "OTHER") return "OTH";
   if (g && /GWP|SAMP|MINI|PR GIFT|EXEC GIFT|POSM/.test(g)) return "GWPS";
+  if (g === "STOCK") {
+    if (hasStrongTesterSignal(sku, desc)) return "TESTER";
+    return "STOCK";
+  }
   var d = String(desc || "").toUpperCase();
-  var s = String(sku || "").toUpperCase();
-  if (/TESTER/.test(d)) return "TESTER";
+  var s = String(sku || "")
+    .trim()
+    .toUpperCase();
+  if (hasStrongTesterSignal(sku, desc)) return "TESTER";
+  // Derived SKU shapes — only when master group is empty/unknown (not STOCK)
   if (/^T-/.test(s) || /[0-9][FT]$/.test(s) || /TESTER/.test(s)) return "TESTER";
   // Gift / POSM / sample / branded tote-style bags (Prestige warehouse)
   if (

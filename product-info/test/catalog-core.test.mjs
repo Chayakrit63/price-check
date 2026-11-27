@@ -152,6 +152,7 @@ const SAMPLE_ROWS = [
 ];
 
 test("itemTypeBucket classifier", () => {
+  assert.equal(VERSION, "20261127j");
   assert.equal(itemTypeBucket("EXT0029", "", "STOCK", ""), "STOCK");
   assert.equal(itemTypeBucket("T-EXT0029", "TESTER 100ML", "TESTER", ""), "TESTER");
   assert.equal(itemTypeBucket("1800103", "GIFT BAG POSM", "OTH", ""), "OTH"); // master OTH wins
@@ -168,6 +169,53 @@ test("itemTypeBucket classifier", () => {
   assert.equal(itemTypeBucket("L3720002", "CACHAREL ANAIS ANAIS EDT 50ML", "", ""), "STOCK");
   assert.equal(itemTypeBucket("T3720002", "CACHAREL ANAIS ANAIS EDT 50ML TESTER", "", ""), "TESTER");
   assert.equal(itemTypeBucket("TRG1", "STAFF TRAINING KIT", "", ""), "OTH");
+
+  // Strong tester signals override master STOCK
+  assert.equal(
+    itemTypeBucket(
+      "F8638900-TST",
+      "Prada LC5 Reveal Mesh Blue Cushion Ltd Ed Found. TST",
+      "STOCK",
+      ""
+    ),
+    "TESTER"
+  );
+  assert.equal(
+    itemTypeBucket(
+      "F8639000-TST",
+      "Prada LN10 Reveal Mesh Blue Cushion Ltd Ed Found. TS…",
+      "STOCK",
+      ""
+    ),
+    "TESTER"
+  );
+  assert.equal(itemTypeBucket("LE032000-TST", "any desc", "STOCK", ""), "TESTER");
+  assert.equal(
+    itemTypeBucket("PRADA1", "PRADA AMBER POUR HOMME EDT TESTER 100ML", "STOCK", ""),
+    "TESTER"
+  );
+  assert.equal(
+    itemTypeBucket("L3720002", "CACHAREL ANAIS ANAIS EDT 50ML", "STOCK", ""),
+    "STOCK"
+  );
+  assert.equal(itemTypeBucket("X1", "TSTUDIO BAG 30ML", "STOCK", ""), "STOCK");
+  assert.equal(itemTypeBucket("X2", "Found. TST", "STOCK", ""), "TESTER");
+  assert.equal(itemTypeBucket("X3", "TST 30ML", "", ""), "TESTER");
+  // GWPS master wins over -TST
+  assert.equal(itemTypeBucket("GWP-TST", "GIFT BAG", "GWP", ""), "GWPS");
+  assert.equal(itemTypeBucket("SAMP-TST", "SAMPLE", "SAMP", ""), "GWPS");
+  assert.equal(
+    itemTypeBucket("F8638900-TST", "Found. TST", "STOCK", "STOCK"),
+    "STOCK"
+  );
+  assert.equal(
+    rowTypeBucket({
+      sku: "F8638900-TST",
+      desc: "Prada LC5 Reveal Mesh Blue Cushion Ltd Ed Found. TST",
+      group: "STOCK",
+    }),
+    "TESTER"
+  );
 });
 
 test("filterSohLeftover typeCat + sohLeftoverTypeCounts", () => {
@@ -986,7 +1034,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127i");
+  assert.equal(VERSION, "20261127j");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1360,7 +1408,7 @@ test("stripBrandFromPackDesc + clipPackQrDesc", () => {
 });
 
 test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
-  assert.equal(VERSION, "20261127i");
+  assert.equal(VERSION, "20261127j");
   var meta = {
     boxNo: "PK-261127-001",
     boxSeq: 1,
