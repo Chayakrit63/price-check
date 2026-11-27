@@ -3154,6 +3154,7 @@ function pkOpenCounterCheck(seedCounter){
   }
   function paintShell(){
     var choices=counterChoices();
+    // datalist id must stay distinct from results #ctr-check-list (rows + tap handler)
     var html='<label class="fl" style="margin:0 0 8px"><span>เคาน์เตอร์ · Counter</span><input id="ctr-check-ctr" list="ctr-check-ctr-opts" value="'+esc(state.counter)+'" autocomplete="off" placeholder="เลือกหรือพิมพ์ชื่อ"></label>';
     html+='<datalist id="ctr-check-ctr-opts"></datalist>';
     html+='<div class="pk-act" style="margin:0 0 10px"><button type="button" class="btn" id="ctr-check-run" style="margin:0">ตรวจ · Check</button>';
@@ -3162,7 +3163,7 @@ function pkOpenCounterCheck(seedCounter){
     html+='<button type="button" class="btn2" id="ctr-check-xlsx" style="margin:0;width:auto" '+(state.check?"":"disabled")+'>⬇ Excel</button></div>';
     html+='<div id="ctr-check-body"></div>';
     body.innerHTML=html;
-    fillDatalist("ctr-check-ctr-opts", choices);
+    fillDatalist("ctr-check-ctr-opts", choices); // counter names only — never SKU rows
     $("ctr-check-run").onclick=function(){state.counter=($("ctr-check-ctr").value||"").trim(); run(false);};
     $("ctr-check-refresh").onclick=function(){state.counter=($("ctr-check-ctr").value||"").trim(); run(true);};
     $("ctr-check-copy").onclick=function(){
@@ -3252,7 +3253,8 @@ function pkOpenCounterCheck(seedCounter){
       state.brand=btn.getAttribute("data-b")||"";
       paintResult();
     };
-    var list=$("ctr-check-list");
+    // Bind taps on the results div inside host (not getElementById — avoids any stray id clash)
+    var list=host.querySelector("#ctr-check-list");
     if(list) list.onclick=function(ev){
       var btn=ev.target.closest(".ctr-check-item"); if(!btn||!list.contains(btn)) return;
       var sku=btn.getAttribute("data-sku")||"";
@@ -3346,6 +3348,7 @@ function pkOpenCounterCheck(seedCounter){
       var viewStats=counterCheckRowStatsFn(rows, state.issueCat==="unsaved"?{useDraftPacked:true}:null);
       filtEl.textContent=rows.length+" / "+base.length+" SKU · แพ็ค "+viewStats.packed+" · เหลือ "+viewStats.remaining+" ชิ้น";
     }
+    // Render every filtered row (no silent cap). Footer filtEl above stays rows.length accurate.
     var listHtml="";
     if(!rows.length){
       listHtml='<div class="pk-empty" style="padding:16px 4px">'+(state.issueCat==="leftover"&&!state.q&&state.typeCat==="ALL"?'✓ pullback ครบตาม POS':'ไม่มีรายการในตัวกรอง')+'</div>';
@@ -3371,7 +3374,7 @@ function pkOpenCounterCheck(seedCounter){
     }else{
       rows.forEach(function(r){ listHtml+=ctrCheckItemHtml(r); });
     }
-    var list=$("ctr-check-list"); if(list) list.innerHTML=listHtml;
+    var list=host.querySelector("#ctr-check-list"); if(list) list.innerHTML=listHtml;
     var copyBtn=$("ctr-check-copy"); if(copyBtn) copyBtn.disabled=!state.check;
     var xlsxBtn=$("ctr-check-xlsx"); if(xlsxBtn) xlsxBtn.disabled=!state.check;
   }

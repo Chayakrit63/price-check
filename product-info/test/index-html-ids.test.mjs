@@ -25,6 +25,12 @@ test("Counter check: datalist id ≠ results list id (no duplicate ctr-check-lis
   assert.match(HTML, /<div id="ctr-check-list"><\/div>/);
   assert.equal((HTML.match(/id="ctr-check-list"/g) || []).length, 1);
   assert.equal((HTML.match(/id="ctr-check-ctr-opts"/g) || []).length, 1);
+  // Tap handler + row paint must target the results node inside #ctr-check-body
+  assert.match(HTML, /host\.querySelector\("#ctr-check-list"\)/);
+  assert.equal((HTML.match(/host\.querySelector\("#ctr-check-list"\)/g) || []).length >= 2, true);
+  // No silent row slice in Counter check list paint
+  assert.match(HTML, /rows\.forEach\(function\(r\)\{\s*listHtml\+=ctrCheckItemHtml\(r\);\s*\}\)/);
+  assert.doesNotMatch(HTML, /rows\.slice\(0,\s*\d+\).*ctrCheckItemHtml/);
 });
 
 test("index.html: no duplicate DOM ids that would collide in one sheet", () => {
