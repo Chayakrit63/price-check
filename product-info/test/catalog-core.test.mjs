@@ -4,6 +4,9 @@ import {
   VERSION,
   itemTypeBucket,
   rowTypeBucket,
+  lookupMasterForSohRow,
+  preferItemMasterFields,
+  applyItemMasterToSohRow,
   parseSearchQty,
   searchQueryOnly,
   searchCatalog,
@@ -152,6 +155,7 @@ const SAMPLE_ROWS = [
 ];
 
 test("itemTypeBucket classifier", () => {
+  assert.equal(VERSION, "20261127k");
   assert.equal(itemTypeBucket("EXT0029", "", "STOCK", ""), "STOCK");
   assert.equal(itemTypeBucket("T-EXT0029", "TESTER 100ML", "TESTER", ""), "TESTER");
   assert.equal(itemTypeBucket("1800103", "GIFT BAG POSM", "OTH", ""), "OTH"); // master OTH wins
@@ -168,6 +172,118 @@ test("itemTypeBucket classifier", () => {
   assert.equal(itemTypeBucket("L3720002", "CACHAREL ANAIS ANAIS EDT 50ML", "", ""), "STOCK");
   assert.equal(itemTypeBucket("T3720002", "CACHAREL ANAIS ANAIS EDT 50ML TESTER", "", ""), "TESTER");
   assert.equal(itemTypeBucket("TRG1", "STAFF TRAINING KIT", "", ""), "OTH");
+
+  // Strong tester signals override master STOCK
+  assert.equal(
+    itemTypeBucket(
+      "F8638900-TST",
+      "Prada LC5 Reveal Mesh Blue Cushion Ltd Ed Found. TST",
+      "STOCK",
+      ""
+    ),
+    "TESTER"
+  );
+  assert.equal(
+    itemTypeBucket(
+      "F8639000-TST",
+      "Prada LN10 Reveal Mesh Blue Cushion Ltd Ed Found. TS…",
+      "STOCK",
+      ""
+    ),
+    "TESTER"
+  );
+  assert.equal(itemTypeBucket("LE032000-TST", "any desc", "STOCK", ""), "TESTER");
+  assert.equal(
+    itemTypeBucket("PRADA1", "PRADA AMBER POUR HOMME EDT TESTER 100ML", "STOCK", ""),
+    "TESTER"
+  );
+  assert.equal(
+    itemTypeBucket("L3720002", "CACHAREL ANAIS ANAIS EDT 50ML", "STOCK", ""),
+    "STOCK"
+  );
+  assert.equal(itemTypeBucket("X1", "TSTUDIO BAG 30ML", "STOCK", ""), "STOCK");
+  assert.equal(itemTypeBucket("X2", "Found. TST", "STOCK", ""), "TESTER");
+  assert.equal(itemTypeBucket("X3", "TST 30ML", "", ""), "TESTER");
+  // GWPS master wins over -TST
+  assert.equal(itemTypeBucket("GWP-TST", "GIFT BAG", "GWP", ""), "GWPS");
+  assert.equal(itemTypeBucket("SAMP-TST", "SAMPLE", "SAMP", ""), "GWPS");
+  assert.equal(
+    itemTypeBucket("F8638900-TST", "Found. TST", "STOCK", "STOCK"),
+    "STOCK"
+  );
+  assert.equal(
+    rowTypeBucket({
+      sku: "F8638900-TST",
+      desc: "Prada LC5 Reveal Mesh Blue Cushion Ltd Ed Found. TST",
+      group: "STOCK",
+    }),
+    "TESTER"
+  );
+});
+
+test("prefer Item Master group over POS STOCK (Counter check / SOH)", () => {
+  // Real bug: POS SOH carries group=STOCK + truncated desc; Item Master has TESTER
+  var sohRow = {
+    sku: "F8638900-TST",
+    desc: "Prada LC5 Reveal Mesh Blue Cushion Ltd Ed Found. TST…",
+    group: "STOCK",
+    barcode: "3614273961234",
+  };
+  var master = {
+    sku: "F8638900-TST",
+    group: "TESTER",
+    desc: "PRADA LC5 REVEAL MESH BLUE CUSHION LTD ED FOUNDATION TESTER 12G",
+    brand: "PRADA FACE",
+  };
+  var merged = preferItemMasterFields(sohRow, master);
+  assert.equal(merged.group, "TESTER");
+  assert.equal(merged.type, "TESTER");
+  // display desc kept from POS when present (only fill when empty)
+  assert.match(merged.desc, /Found\. TST/);
+
+  // masterBySku path used by enrichCounterCheck
+  var check = enrichCounterCheck(
+    packingCounterCheck(
+      sohMapFromRows([{ sku: "F8638900-TST", qty: 2, desc: sohRow.desc, group: "STOCK" }]),
+      []
+    ),
+    { masterBySku: { "F8638900-TST": master } }
+  );
+  assert.equal(check.rows.length, 1);
+  assert.equal(check.rows[0].group, "TESTER");
+  assert.equal(check.rows[0].type, "TESTER");
+
+  // lookupMaster: SKU miss → barcode hit
+  var byEan = {
+    "3614273961234": master,
+  };
+  var viaBc = applyItemMasterToSohRow(
+    { sku: "UNKNOWN-SKU", barcode: "3614273961234", desc: sohRow.desc, group: "STOCK" },
+    {
+      lookupMaster: function (code) {
+        var k = String(code || "").trim().toUpperCase();
+        return byEan[k] ? [byEan[k]] : null;
+      },
+    }
+  );
+  assert.equal(viaBc.type, "TESTER");
+  assert.equal(viaBc.group, "TESTER");
+
+  // no master → POS STOCK kept (then -TST safety net still yields TESTER)
+  var noMaster = preferItemMasterFields(sohRow, null);
+  assert.equal(noMaster.group, "STOCK");
+  assert.equal(noMaster.type, "TESTER"); // -TST / whole-word TST safety net
+
+  // POS STOCK must not override master GWPS
+  assert.equal(
+    preferItemMasterFields(
+      { sku: "G1", desc: "bag", group: "STOCK" },
+      { sku: "G1", group: "GWP", desc: "TOTE" }
+    ).type,
+    "GWPS"
+  );
+
+  assert.equal(typeof lookupMasterForSohRow, "function");
 });
 
 test("filterSohLeftover typeCat + sohLeftoverTypeCounts", () => {
@@ -986,7 +1102,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127i");
+  assert.equal(VERSION, "20261127k");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1360,7 +1476,7 @@ test("stripBrandFromPackDesc + clipPackQrDesc", () => {
 });
 
 test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
-  assert.equal(VERSION, "20261127i");
+  assert.equal(VERSION, "20261127k");
   var meta = {
     boxNo: "PK-261127-001",
     boxSeq: 1,

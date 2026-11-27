@@ -760,10 +760,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261127i"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261127i"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127k"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127k"></script>
 <script>
-var APP_VER="20261127i";
+var APP_VER="20261127k";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -1352,6 +1352,10 @@ function parsePkSearchQty(text){
   return {query:String(text||"").trim(),qty:1};
 }
 function catalogRowBucket(row){
+  // Prefer Item Master group over POS/empty group (packing type filter + Info)
+  if(window.CatalogCore&&CatalogCore.applyItemMasterToSohRow){
+    return CatalogCore.applyItemMasterToSohRow(row,{lookupMaster:lookup}).type;
+  }
   if(window.CatalogCore&&CatalogCore.rowTypeBucket) return CatalogCore.rowTypeBucket(row);
   return scRowBucket(row);
 }
@@ -2653,12 +2657,18 @@ function pkSohLeftTypeSet(v){
 }
 function pkSohRowType(r){
   if(r&&r.type) return r.type;
+  // Item Master group primary (SKU then barcode); POS group only if not in master
+  if(window.CatalogCore&&CatalogCore.applyItemMasterToSohRow){
+    return CatalogCore.applyItemMasterToSohRow(r,{lookupMaster:lookup}).type;
+  }
   var hits=r&&r.sku?lookup(r.sku):null;
+  if((!hits||!hits.length)&&r&&r.barcode) hits=lookup(r.barcode);
   var cat=hits&&hits.length?(hits.filter(function(x){return String(x.sku).toUpperCase()===String(r.sku).toUpperCase();})[0]||hits[0]):null;
   return catalogRowBucket({
     sku:r&&r.sku,
+    barcode:r&&r.barcode,
     desc:(r&&r.desc)||(cat&&cat.desc)||"",
-    group:cat&&cat.group
+    group:(cat&&cat.group)||(r&&r.group)||""
   });
 }
 function pkSetSohLast(sku, desc){
@@ -3204,7 +3214,12 @@ function pkOpenCounterCheck(seedCounter){
   }
   function pkCtrCheckBaseRows(){
     return (state.check&&state.check.rows||[]).map(function(r){
-      return Object.assign({}, r, {brand:r.brand||pkSohBrandOf(r.sku,r.desc)});
+      // Re-apply master prefer so type chips stay correct if enrich ran without lookup
+      var row=r;
+      if(window.CatalogCore&&CatalogCore.applyItemMasterToSohRow){
+        row=CatalogCore.applyItemMasterToSohRow(r,{lookupMaster:lookup});
+      }
+      return Object.assign({}, row, {brand:row.brand||pkSohBrandOf(row.sku,row.desc)});
     });
   }
   function pkCtrCheckViewRows(){
@@ -3449,7 +3464,7 @@ function pkOpenCounterCheck(seedCounter){
             });
           }
         }
-        check=enrichCounterCheckFn(check, {draftPacked:draftPacked})||check;
+        check=enrichCounterCheckFn(check, {draftPacked:draftPacked, lookupMaster:lookup})||check;
         // brand enrichment before swap labels stay intact
         (check.rows||[]).forEach(function(r){ if(!r.brand) r.brand=pkSohBrandOf(r.sku,r.desc); });
         var pkNos={};
@@ -5696,15 +5711,17 @@ function scMasterGroup(sku){
   return (r&&(r.group||r.Group))||"";
 }
 function scBucket(sku, desc, masterGroup, override){
-  if(override) return String(override).toUpperCase();
-  var g=String(masterGroup||"").toUpperCase();
   if(window.CatalogCore&&CatalogCore.itemTypeBucket) return CatalogCore.itemTypeBucket(sku,desc,masterGroup,override);
-  if(g==="STOCK") return "STOCK";
+  // Stale-core fallback — mirror CatalogCore strong-tester override of STOCK
+  if(override) return String(override).toUpperCase();
+  var g=String(masterGroup||"").toUpperCase().trim();
+  var d=String(desc||"").toUpperCase(), s=String(sku||"").trim().toUpperCase();
+  var strong=/-TST$/.test(s)||/TESTER/.test(d)||/\bTST\b/.test(d);
   if(g==="TESTER") return "TESTER";
-  if(g==="OTH") return "OTH";
-  if(/GWP|SAMP|MINI|PR GIFT|EXEC GIFT/.test(g)) return "GWPS";
-  var d=String(desc||"").toUpperCase(), s=String(sku||"").toUpperCase();
-  if(/TESTER/.test(d)) return "TESTER";
+  if(g==="OTH"||g==="OTHER") return "OTH";
+  if(g&&/GWP|SAMP|MINI|PR GIFT|EXEC GIFT|POSM/.test(g)) return "GWPS";
+  if(g==="STOCK") return strong?"TESTER":"STOCK";
+  if(strong) return "TESTER";
   if(/^T-/.test(s)||/[0-9][FT]$/.test(s)||/TESTER/.test(s)) return "TESTER";
   if(/GWP|GIFT/.test(d)) return "GWPS";
   return "STOCK";

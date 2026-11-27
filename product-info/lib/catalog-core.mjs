@@ -19,7 +19,22 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127i";
+export var VERSION = "20261127k";
+
+/**
+ * Strong tester signals that may override a master group of STOCK
+ * (not override / GWPS / OTH). Whole-word TST — not inside TSTUDIO etc.
+ */
+function hasStrongTesterSignal(sku, desc) {
+  var s = String(sku || "")
+    .trim()
+    .toUpperCase();
+  var d = String(desc || "").toUpperCase();
+  if (/-TST$/.test(s)) return true;
+  if (/TESTER/.test(d)) return true;
+  if (/\bTST\b/.test(d)) return true;
+  return false;
+}
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -27,30 +42,45 @@ export var VERSION = "20261127i";
  * Priority (first match wins):
  * 1. Explicit override (stock-count groupOverride, etc.)
  * 2. Master Items `group` / category when present:
- *    - STOCK / TESTER / OTH → that bucket
+ *    - TESTER / OTH → that bucket
  *    - GWP, SAMP, MINI, PR GIFT, EXEC GIFT (and similar) → GWPS
- * 3. Derived from SKU / description when master group is empty/unknown:
- *    - Tester: desc/sku contains TESTER; SKU like T-… or ends with digit+F/T
+ *      (GWPS wins even if SKU ends with -TST)
+ *    - STOCK → TESTER when strong tester signals apply, else STOCK
+ * 3. Strong tester signals (also when master group empty/unknown):
+ *    - SKU ends with -TST (case-insensitive)
+ *    - desc contains TESTER
+ *    - desc contains whole-word TST (e.g. "Found. TST")
+ * 4. Derived from SKU / description when master group is empty/unknown:
+ *    - Tester: SKU like T-… or ends with digit+F/T; sku contains TESTER
  *    - GWPs: desc matches GWP, GIFT, POSM, SAMPLE/SAMP, TOTE BAG, WOVEN BAG
  *    - Other: TRAINING / FIXTURE / DISPLAY in desc
  *    - else Stock (normal saleable)
  *
  * Examples:
  * - STOCK: L3720002 "CACHAREL ANAIS ANAIS EDT 50ML" group=STOCK
+ * - TESTER: F8638900-TST "… Found. TST" group=STOCK (strong signal overrides STOCK)
  * - TESTER: T-EXT0029 "… TESTER 100ML" group=TESTER
- * - GWPS: "RED TOTE BAG GWP LARGE", "WOVEN BAG POSM MEDIUM", "EDP SAMPLE 2ML"
+ * - GWPs: "RED TOTE BAG GWP LARGE", "WOVEN BAG POSM MEDIUM", "EDP SAMPLE 2ML"
  * - OTH: 3111601-TRG "TRAINING" group=OTH
  */
 export function itemTypeBucket(sku, desc, masterGroup, override) {
   if (override) return String(override).toUpperCase();
-  var g = String(masterGroup || "").toUpperCase().trim();
-  if (g === "STOCK") return "STOCK";
+  var g = String(masterGroup || "")
+    .toUpperCase()
+    .trim();
   if (g === "TESTER") return "TESTER";
   if (g === "OTH" || g === "OTHER") return "OTH";
   if (g && /GWP|SAMP|MINI|PR GIFT|EXEC GIFT|POSM/.test(g)) return "GWPS";
+  if (g === "STOCK") {
+    if (hasStrongTesterSignal(sku, desc)) return "TESTER";
+    return "STOCK";
+  }
   var d = String(desc || "").toUpperCase();
-  var s = String(sku || "").toUpperCase();
-  if (/TESTER/.test(d)) return "TESTER";
+  var s = String(sku || "")
+    .trim()
+    .toUpperCase();
+  if (hasStrongTesterSignal(sku, desc)) return "TESTER";
+  // Derived SKU shapes — only when master group is empty/unknown (not STOCK)
   if (/^T-/.test(s) || /[0-9][FT]$/.test(s) || /TESTER/.test(s)) return "TESTER";
   // Gift / POSM / sample / branded tote-style bags (Prestige warehouse)
   if (
@@ -80,6 +110,91 @@ export function rowTypeBucket(row) {
     row.group || row.Group || "",
     row.groupOverride || row.groupoverride || ""
   );
+}
+
+/**
+ * Resolve Item Master row for a SOH / counter-check line.
+ * Tries SKU first, then barcode/EAN. `lookupFn(code)` returns an array of
+ * master rows (same shape as browser `lookup()`), or null/empty.
+ */
+export function lookupMasterForSohRow(row, lookupFn) {
+  if (!row || typeof lookupFn !== "function") return null;
+  function pick(list, skuWant) {
+    if (!list || !list.length) return null;
+    var want = String(skuWant || "")
+      .trim()
+      .toUpperCase();
+    if (want) {
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].sku || "").toUpperCase() === want) return list[i];
+      }
+    }
+    return list[0];
+  }
+  var sku = String(row.sku || "").trim();
+  var hit = sku ? pick(lookupFn(sku), sku) : null;
+  if (hit) return hit;
+  var bc = String(row.barcode || row.ean || "").trim();
+  if (bc) {
+    hit = pick(lookupFn(bc), sku);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Prefer Item Master group (and desc when empty) over POS SOH fields.
+ * When the SKU/barcode is in the master, master.group wins — POS STOCK must
+ * never override master TESTER / GWPS / OTH. Fall back to POS group only when
+ * the SKU is missing from the master (or master group is empty).
+ * Sets `type` via itemTypeBucket (keeps -TST / TST / TESTER safety net).
+ */
+export function preferItemMasterFields(row, master) {
+  var out = Object.assign({}, row || {});
+  var posGroup = String(out.group || out.Group || "").trim();
+  if (master) {
+    var masterGroup = String(master.group || master.Group || "").trim();
+    if (masterGroup) {
+      out.group = masterGroup;
+    } else if (posGroup) {
+      out.group = posGroup;
+    }
+    if (!String(out.desc || "").trim() && master.desc) {
+      out.desc = String(master.desc);
+    }
+    if (!String(out.brand || "").trim() && (master.brand || master.Brand)) {
+      out.brand = String(master.brand || master.Brand);
+    }
+  }
+  out.type = itemTypeBucket(
+    out.sku,
+    out.desc || out.description,
+    out.group || "",
+    out.groupOverride || out.groupoverride || ""
+  );
+  return out;
+}
+
+/** Resolve master from lookupFn and/or masterBySku map, then prefer master fields. */
+export function applyItemMasterToSohRow(row, opts) {
+  opts = opts || {};
+  var master = null;
+  if (typeof opts.lookupMaster === "function") {
+    master = lookupMasterForSohRow(row, opts.lookupMaster);
+  }
+  if (!master && opts.masterBySku) {
+    var sku = String((row && row.sku) || "")
+      .trim()
+      .toUpperCase();
+    if (sku && opts.masterBySku[sku]) master = opts.masterBySku[sku];
+    if (!master) {
+      var bc = String((row && (row.barcode || row.ean)) || "")
+        .trim()
+        .toUpperCase();
+      if (bc && opts.masterBySku[bc]) master = opts.masterBySku[bc];
+    }
+  }
+  return preferItemMasterFields(row, master);
 }
 
 /** Query text only (strips *qty / xqty); qty is ignored on Info tab in the app. */
@@ -795,7 +910,7 @@ export function packingSkuQtyMap(lines) {
   return map;
 }
 
-/** Build SOH lookup { SKU_UPPER: { qty, barcode, desc } } from rows. */
+/** Build SOH lookup { SKU_UPPER: { qty, barcode, desc, group } } from rows. */
 export function sohMapFromRows(rows) {
   var map = {};
   (rows || []).forEach(function (r) {
@@ -805,10 +920,19 @@ export function sohMapFromRows(rows) {
     if (!sku) return;
     var q = Number(r.qty) || 0;
     if (q === 0) return;
-    if (!map[sku]) map[sku] = { qty: 0, barcode: r.barcode || "", desc: r.desc || "" };
+    var g = String((r && (r.group || r.Group)) || "").trim();
+    if (!map[sku]) {
+      map[sku] = {
+        qty: 0,
+        barcode: r.barcode || "",
+        desc: r.desc || "",
+        group: g,
+      };
+    }
     map[sku].qty += q;
     if (r.barcode && !map[sku].barcode) map[sku].barcode = r.barcode;
     if (r.desc && !map[sku].desc) map[sku].desc = r.desc;
+    if (g && !map[sku].group) map[sku].group = g;
   });
   return map;
 }
@@ -1138,6 +1262,8 @@ export function packingCounterCheck(sohMap, pkBundles) {
       desc: sohMap[sku].desc || m.desc || "",
       barcode: sohMap[sku].barcode || m.barcode || "",
       brand: m.brand || "",
+      // POS group only — enrichCounterCheck prefers Item Master group when present
+      group: sohMap[sku].group || "",
       soh: soh,
       packed: p,
       left: left,
@@ -1435,8 +1561,13 @@ export function detectCounterCheckSwaps(rows) {
 /**
  * Annotate counter-check rows with type / size / swap partner / draft pcs.
  * Does not change existing status meanings (leftover|over|missing|done).
+ * Prefer Item Master group (via opts.lookupMaster / opts.masterBySku) over POS.
  * @param {object} check
- * @param {{ draftPacked?: Record<string, number> }} [opts]
+ * @param {{
+ *   draftPacked?: Record<string, number>,
+ *   lookupMaster?: function,
+ *   masterBySku?: Record<string, object>
+ * }} [opts]
  *   draftPacked = SKU→qty from the open unsaved PK (ยังไม่บันทึก).
  */
 export function enrichCounterCheck(check, opts) {
@@ -1444,13 +1575,14 @@ export function enrichCounterCheck(check, opts) {
   opts = opts || {};
   var draftMap = opts.draftPacked || opts.draftMap || {};
   var rows = (check.rows || []).map(function (r) {
-    var size = parseItemSize(r.desc);
-    var sku = String(r.sku || "")
+    var merged = applyItemMasterToSohRow(r, opts);
+    var size = parseItemSize(merged.desc);
+    var sku = String(merged.sku || "")
       .trim()
       .toUpperCase();
     var draftPacked = Number(draftMap[sku]) || 0;
-    return Object.assign({}, r, {
-      type: String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase(),
+    return Object.assign({}, merged, {
+      type: String(merged.type || rowTypeBucket(merged) || "STOCK").toUpperCase(),
       size: size,
       swapWith: "",
       swapNote: "",
@@ -2661,6 +2793,7 @@ export function packingSohLeftover(lines, sohMap) {
         left: soh - p,
         desc: sohMap[sku].desc || "",
         barcode: sohMap[sku].barcode || "",
+        group: sohMap[sku].group || "",
       });
     }
   });
@@ -2689,6 +2822,9 @@ if (typeof window !== "undefined") {
     VERSION: VERSION,
     itemTypeBucket: itemTypeBucket,
     rowTypeBucket: rowTypeBucket,
+    lookupMasterForSohRow: lookupMasterForSohRow,
+    preferItemMasterFields: preferItemMasterFields,
+    applyItemMasterToSohRow: applyItemMasterToSohRow,
     parseSearchQty: parseSearchQty,
     searchQueryOnly: searchQueryOnly,
     counterPlaceName: counterPlaceName,
