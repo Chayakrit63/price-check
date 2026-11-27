@@ -901,7 +901,7 @@ export function warmUpCamScan() {
 }
 
 export var CamScan = {
-  VERSION: "20261127j",
+  VERSION: "20261127k",
   create: createCamController,
   warmUp: warmUpCamScan,
   ensureLib: ensureLib,
