@@ -236,9 +236,12 @@ async function main() {
       note("filterBtnOn", !!document.querySelector('#pk-soh-sum button.err.on'));
       pkSetSohFilter(null);
 
-      // review sheet html includes SOH section
-      const review = pkBuildSummaryHtml(curBox());
+      // review sheet includes SOH section + filterable list
+      pkConfirmSummary("สรุปก่อนพิมพ์ · Review before print", function(){}, curBox());
+      const review = (document.getElementById("sh-body") && document.getElementById("sh-body").innerText) || "";
       note("reviewHasSoh", /SOH vs/.test(review) || /ไม่มีใน POS|เกิน|แพ็ค/.test(review));
+      note("reviewHasFilters", !!document.getElementById("pk-sum-types") && !!document.getElementById("pk-sum-list"));
+      closeSheet(false);
 
       // undo last add path: add then undo
       const beforeUndo = packItemList(curBox()).length;

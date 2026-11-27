@@ -23,6 +23,15 @@ import {
   packingIsBigQty,
   packingTypeSummary,
   packingBigQtyLines,
+  buildPackingReviewRows,
+  filterPackingReviewRows,
+  packingReviewTypeCounts,
+  packingReviewStatusCounts,
+  packingReviewFilterTotals,
+  packingReviewStatusLabel,
+  normalizePackingReviewTypeCat,
+  normalizePackingReviewStatusCat,
+  PACKING_REVIEW_STATUS_DEFS,
   sortPickRowsInBoxFirst,
   packingUndoResult,
   PK_BIG_QTY,
@@ -155,7 +164,7 @@ const SAMPLE_ROWS = [
 ];
 
 test("itemTypeBucket classifier", () => {
-  assert.equal(VERSION, "20261127k");
+  assert.equal(VERSION, "20261127l");
   assert.equal(itemTypeBucket("EXT0029", "", "STOCK", ""), "STOCK");
   assert.equal(itemTypeBucket("T-EXT0029", "TESTER 100ML", "TESTER", ""), "TESTER");
   assert.equal(itemTypeBucket("1800103", "GIFT BAG POSM", "OTH", ""), "OTH"); // master OTH wins
@@ -557,6 +566,100 @@ test("packing big qty + type summary + undo + pick sort", () => {
     pick.map((r) => r.sku),
     ["Y", "X", "Z"]
   );
+});
+
+test("packing review sheet filter: type + status + search (view-only rows)", () => {
+  assert.equal(normalizePackingReviewTypeCat("other"), "OTH");
+  assert.equal(normalizePackingReviewStatusCat("leftover"), "notPacked");
+  assert.equal(PACKING_REVIEW_STATUS_DEFS.length >= 5, true);
+  assert.match(packingReviewStatusLabel("partial"), /แพ็คบางส่วน/);
+
+  var soh = sohMapFromRows([
+    { sku: "STOCK1", qty: 10, desc: "Saleable EDT", group: "STOCK" },
+    { sku: "T-TEST", qty: 3, desc: "EDT TESTER", group: "TESTER" },
+    { sku: "LEFT0", qty: 5, desc: "Not started", group: "STOCK" },
+    { sku: "PART1", qty: 4, desc: "Partial stock", group: "STOCK" },
+  ]);
+  var lines = [
+    { sku: "STOCK1", qty: 10, desc: "Saleable EDT", group: "STOCK" },
+    { sku: "T-TEST", qty: 1, desc: "EDT TESTER", group: "TESTER" },
+    { sku: "PART1", qty: 2, desc: "Partial stock", group: "STOCK" },
+    { sku: "BIG1", qty: 25, desc: "Big stock line", group: "STOCK" },
+    { sku: "MISS1", qty: 2, desc: "Not in POS", group: "STOCK" },
+  ];
+  var rows = buildPackingReviewRows(lines, soh, { bucketFn: rowTypeBucket });
+  var by = {};
+  rows.forEach(function (r) {
+    by[r.sku] = r;
+  });
+  assert.ok(by.STOCK1);
+  assert.ok(by.STOCK1.statuses.indexOf("packed") >= 0);
+  assert.ok(by.LEFT0);
+  assert.ok(by.LEFT0.statuses.indexOf("notPacked") >= 0);
+  assert.equal(by.LEFT0.packed, 0);
+  assert.equal(by.LEFT0.left, 5);
+  assert.ok(by.PART1.statuses.indexOf("partial") >= 0);
+  assert.ok(by.PART1.statuses.indexOf("packed") >= 0);
+  assert.ok(by.BIG1.statuses.indexOf("bigQty") >= 0);
+  assert.ok(by.MISS1.statuses.indexOf("mismatch") >= 0);
+  assert.equal(by["T-TEST"].type, "TESTER");
+
+  // Master group preferred via bucketFn (simulate applyItemMaster)
+  var masterBucket = function (r) {
+    if (String(r.sku).toUpperCase() === "STOCK1") {
+      return itemTypeBucket(r.sku, r.desc, "TESTER", "");
+    }
+    return rowTypeBucket(r);
+  };
+  var withMaster = buildPackingReviewRows(lines, soh, { bucketFn: masterBucket });
+  assert.equal(
+    withMaster.filter(function (r) {
+      return r.sku === "STOCK1";
+    })[0].type,
+    "TESTER"
+  );
+
+  var typed = filterPackingReviewRows(rows, { typeCat: "TESTER", statusCat: "ALL" });
+  assert.ok(typed.every(function (r) {
+    return r.type === "TESTER";
+  }));
+  assert.equal(typed.length, 1);
+
+  var notPacked = filterPackingReviewRows(rows, { statusCat: "notPacked" });
+  assert.ok(notPacked.some(function (r) {
+    return r.sku === "LEFT0";
+  }));
+  assert.ok(
+    notPacked.every(function (r) {
+      return r.statuses.indexOf("notPacked") >= 0;
+    })
+  );
+
+  var partial = filterPackingReviewRows(rows, { statusCat: "partial" });
+  assert.deepEqual(
+    partial.map(function (r) {
+      return r.sku;
+    }),
+    ["PART1", "T-TEST"]
+  );
+
+  var searched = filterPackingReviewRows(rows, { query: "partial" });
+  assert.equal(searched.length, 1);
+  assert.equal(searched[0].sku, "PART1");
+
+  var tc = packingReviewTypeCounts(rows);
+  assert.ok(tc.ALL.sku >= 5);
+  assert.ok(tc.TESTER.sku >= 1);
+  var sc = packingReviewStatusCounts(rows);
+  assert.ok(sc.notPacked.sku >= 1);
+  assert.ok(sc.bigQty.sku >= 1);
+  assert.ok(sc.mismatch.sku >= 1);
+
+  var tot = packingReviewFilterTotals(
+    filterPackingReviewRows(rows, { statusCat: "packed" })
+  );
+  assert.ok(tot.sku >= 4);
+  assert.ok(tot.packed >= 10);
 });
 
 test("POS SOH parse: apostrophe strip, qty!=0, header/as-of", () => {
@@ -1102,7 +1205,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127k");
+  assert.equal(VERSION, "20261127l");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1476,7 +1579,7 @@ test("stripBrandFromPackDesc + clipPackQrDesc", () => {
 });
 
 test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
-  assert.equal(VERSION, "20261127k");
+  assert.equal(VERSION, "20261127l");
   var meta = {
     boxNo: "PK-261127-001",
     boxSeq: 1,

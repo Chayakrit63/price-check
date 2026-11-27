@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127k";
+export var VERSION = "20261127l";
 
 /**
  * Strong tester signals that may override a master group of STOCK
@@ -668,6 +668,246 @@ export function packingBigQtyLines(lines, threshold) {
   return (lines || []).filter(function (l) {
     return (Number(l.qty) || 0) >= lim;
   });
+}
+
+/** Status keys for packing review-before-print / review-before-save sheet. */
+export var PACKING_REVIEW_STATUS_DEFS = [
+  { id: "ALL", th: "ทั้งหมด", en: "All" },
+  { id: "packed", th: "แพ็คแล้ว", en: "Packed" },
+  { id: "notPacked", th: "ยังไม่แพ็ค", en: "Not packed" },
+  { id: "partial", th: "แพ็คบางส่วน", en: "Partial" },
+  { id: "mismatch", th: "ต่างกับ POS", en: "Mismatch" },
+  { id: "bigQty", th: "จำนวนมาก", en: "Big qty" },
+];
+
+export function packingReviewStatusLabel(status) {
+  var s = String(status || "ALL").trim();
+  for (var i = 0; i < PACKING_REVIEW_STATUS_DEFS.length; i++) {
+    if (PACKING_REVIEW_STATUS_DEFS[i].id === s) {
+      return (
+        PACKING_REVIEW_STATUS_DEFS[i].th +
+        " · " +
+        PACKING_REVIEW_STATUS_DEFS[i].en
+      );
+    }
+  }
+  return PACKING_REVIEW_STATUS_DEFS[0].th + " · " + PACKING_REVIEW_STATUS_DEFS[0].en;
+}
+
+export function normalizePackingReviewTypeCat(v) {
+  var t = String(v || "ALL")
+    .trim()
+    .toUpperCase();
+  if (t === "OTHER") t = "OTH";
+  if (["ALL", "STOCK", "TESTER", "GWPS", "OTH"].indexOf(t) < 0) return "ALL";
+  return t;
+}
+
+export function normalizePackingReviewStatusCat(v) {
+  var s = String(v || "ALL").trim();
+  if (!s || /^all$/i.test(s)) return "ALL";
+  if (s === "NOT_PACKED" || s === "not_packed" || s === "leftover") s = "notPacked";
+  if (s === "BIG" || s === "big" || s === "BIG_QTY") s = "bigQty";
+  if (s === "MISS" || s === "over" || s === "missing") s = "mismatch";
+  var ok = ["ALL", "packed", "notPacked", "partial", "mismatch", "bigQty"];
+  return ok.indexOf(s) >= 0 ? s : "ALL";
+}
+
+/**
+ * Unified SKU rows for packing review sheet (print/save summary).
+ * Union of packed box lines, SOH leftovers, and POS mismatches.
+ * Does not mutate packing lines or print/QR payloads.
+ *
+ * @param {Array} lines
+ * @param {object|null} sohMap
+ * @param {{ bucketFn?: Function, bigQtyThreshold?: number }} [opts]
+ */
+export function buildPackingReviewRows(lines, sohMap, opts) {
+  opts = opts || {};
+  var bucketFn = opts.bucketFn || rowTypeBucket;
+  var bigLim = opts.bigQtyThreshold == null ? PK_BIG_QTY : opts.bigQtyThreshold;
+  var packedMap = packingSkuQtyMap(lines);
+  var bySku = {};
+
+  function touch(sku) {
+    sku = String(sku || "")
+      .trim()
+      .toUpperCase();
+    if (!sku) return null;
+    if (!bySku[sku]) {
+      var sohEnt = sohMap && sohMap[sku];
+      bySku[sku] = {
+        sku: sku,
+        desc: (sohEnt && sohEnt.desc) || "",
+        barcode: (sohEnt && sohEnt.barcode) || "",
+        brand: "",
+        group: (sohEnt && sohEnt.group) || "",
+        packed: Number(packedMap[sku]) || 0,
+        soh: sohEnt ? Number(sohEnt.qty) || 0 : 0,
+        left: 0,
+        type: "STOCK",
+        statuses: [],
+        warn: "",
+      };
+    }
+    return bySku[sku];
+  }
+
+  (lines || []).forEach(function (l) {
+    var sku = String((l && l.sku) || "")
+      .trim()
+      .toUpperCase();
+    if (!sku) return;
+    var r = touch(sku);
+    if (!r) return;
+    if (l.desc) r.desc = String(l.desc);
+    var bc = l.barcode || l.ean || "";
+    if (bc && !r.barcode) r.barcode = String(bc);
+    if (l.brand && !r.brand) r.brand = String(l.brand);
+    if ((l.group || l.Group) && !r.group) r.group = String(l.group || l.Group);
+  });
+
+  if (sohMap) {
+    Object.keys(sohMap).forEach(function (sku) {
+      var soh = Number(sohMap[sku].qty) || 0;
+      var p = Number(packedMap[sku]) || 0;
+      if (soh > 0 && p < soh) touch(sku);
+    });
+    packingSohMismatches(lines, sohMap).forEach(function (m) {
+      var r = touch(m.sku);
+      if (!r) return;
+      if (m.desc && !r.desc) r.desc = String(m.desc);
+      if (m.warn) r.warn = String(m.warn);
+      r.packed = Number(m.packed) || r.packed;
+      r.soh = Number(m.soh) || 0;
+    });
+  }
+
+  return Object.keys(bySku)
+    .map(function (sku) {
+      var r = bySku[sku];
+      r.packed = Number(packedMap[sku]) || r.packed || 0;
+      if (sohMap && sohMap[sku]) r.soh = Number(sohMap[sku].qty) || 0;
+      r.left = Math.max(0, (Number(r.soh) || 0) - (Number(r.packed) || 0));
+      var t = String(bucketFn(r) || "STOCK").toUpperCase();
+      if (t === "OTHER") t = "OTH";
+      r.type = t;
+      var st = [];
+      if (r.packed > 0) st.push("packed");
+      if (r.soh > 0 && r.packed === 0) st.push("notPacked");
+      if (r.packed > 0 && r.soh > 0 && r.packed < r.soh) st.push("partial");
+      if (sohMap && (r.packed > r.soh || (r.packed > 0 && r.soh === 0))) {
+        st.push("mismatch");
+      }
+      if (r.packed >= bigLim) st.push("bigQty");
+      var seen = {};
+      r.statuses = st.filter(function (s) {
+        if (seen[s]) return false;
+        seen[s] = 1;
+        return true;
+      });
+      return r;
+    })
+    .sort(function (a, b) {
+      return a.sku.localeCompare(b.sku);
+    });
+}
+
+/** Filter review rows by typeCat / statusCat / query (view-only). */
+export function filterPackingReviewRows(rows, opts) {
+  opts = opts || {};
+  var tc = normalizePackingReviewTypeCat(opts.typeCat);
+  var sc = normalizePackingReviewStatusCat(opts.statusCat);
+  var q = String(opts.query != null ? opts.query : opts.q || "").trim();
+  return (rows || []).filter(function (r) {
+    if (tc !== "ALL") {
+      var t = String(r.type || rowTypeBucket(r) || "").toUpperCase();
+      if (t === "OTHER") t = "OTH";
+      if (t !== tc) return false;
+    }
+    if (sc !== "ALL") {
+      var sts = r.statuses || [];
+      if (sts.indexOf(sc) < 0) return false;
+    }
+    if (!q) return true;
+    var hay =
+      String(r.sku || "") +
+      " " +
+      String(r.barcode || "") +
+      " " +
+      String(r.desc || "") +
+      " " +
+      String(r.brand || "");
+    return textMatchesQuery(hay, q);
+  });
+}
+
+function packingReviewRowPcs(r) {
+  var p = Number(r && r.packed) || 0;
+  if (p > 0) return p;
+  return Number(r && r.left) || 0;
+}
+
+/** Type chip counts (sku + display pcs) over review rows. */
+export function packingReviewTypeCounts(rows) {
+  var out = {
+    ALL: { sku: 0, qty: 0 },
+    STOCK: { sku: 0, qty: 0 },
+    TESTER: { sku: 0, qty: 0 },
+    GWPS: { sku: 0, qty: 0 },
+    OTH: { sku: 0, qty: 0 },
+  };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    var pcs = packingReviewRowPcs(r);
+    out.ALL.sku++;
+    out.ALL.qty += pcs;
+    var t = String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase();
+    if (t === "OTHER") t = "OTH";
+    if (!out[t]) t = "OTH";
+    out[t].sku++;
+    out[t].qty += pcs;
+  });
+  return out;
+}
+
+/** Status chip counts over review rows. */
+export function packingReviewStatusCounts(rows) {
+  var out = {
+    ALL: { sku: 0, qty: 0 },
+    packed: { sku: 0, qty: 0 },
+    notPacked: { sku: 0, qty: 0 },
+    partial: { sku: 0, qty: 0 },
+    mismatch: { sku: 0, qty: 0 },
+    bigQty: { sku: 0, qty: 0 },
+  };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    var pcs = packingReviewRowPcs(r);
+    out.ALL.sku++;
+    out.ALL.qty += pcs;
+    (r.statuses || []).forEach(function (s) {
+      if (!out[s]) return;
+      out[s].sku++;
+      out[s].qty += pcs;
+    });
+  });
+  return out;
+}
+
+/** Totals for the currently filtered review list. */
+export function packingReviewFilterTotals(rows) {
+  var sku = 0;
+  var packed = 0;
+  var soh = 0;
+  var left = 0;
+  (rows || []).forEach(function (r) {
+    sku++;
+    packed += Number(r.packed) || 0;
+    soh += Number(r.soh) || 0;
+    left += Number(r.left) || 0;
+  });
+  return { sku: sku, packed: packed, soh: soh, left: left };
 }
 
 /** Sort pick candidates: SKUs already in the box first, then original order. */
@@ -2840,6 +3080,15 @@ if (typeof window !== "undefined") {
     packingIsBigQty: packingIsBigQty,
     packingTypeSummary: packingTypeSummary,
     packingBigQtyLines: packingBigQtyLines,
+    PACKING_REVIEW_STATUS_DEFS: PACKING_REVIEW_STATUS_DEFS,
+    packingReviewStatusLabel: packingReviewStatusLabel,
+    normalizePackingReviewTypeCat: normalizePackingReviewTypeCat,
+    normalizePackingReviewStatusCat: normalizePackingReviewStatusCat,
+    buildPackingReviewRows: buildPackingReviewRows,
+    filterPackingReviewRows: filterPackingReviewRows,
+    packingReviewTypeCounts: packingReviewTypeCounts,
+    packingReviewStatusCounts: packingReviewStatusCounts,
+    packingReviewFilterTotals: packingReviewFilterTotals,
     sortPickRowsInBoxFirst: sortPickRowsInBoxFirst,
     packingUndoResult: packingUndoResult,
     typeBucketLabel: typeBucketLabel,
