@@ -986,7 +986,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127h");
+  assert.equal(VERSION, "20261127i");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1360,7 +1360,7 @@ test("stripBrandFromPackDesc + clipPackQrDesc", () => {
 });
 
 test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
-  assert.equal(VERSION, "20261127h");
+  assert.equal(VERSION, "20261127i");
   var meta = {
     boxNo: "PK-261127-001",
     boxSeq: 1,
