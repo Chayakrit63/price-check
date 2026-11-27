@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127e";
+export var VERSION = "20261127f";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -1392,19 +1392,29 @@ export function detectCounterCheckSwaps(rows) {
 }
 
 /**
- * Annotate counter-check rows with type / size / swap partner.
+ * Annotate counter-check rows with type / size / swap partner / draft pcs.
  * Does not change existing status meanings (leftover|over|missing|done).
+ * @param {object} check
+ * @param {{ draftPacked?: Record<string, number> }} [opts]
+ *   draftPacked = SKU→qty from the open unsaved PK (ยังไม่บันทึก).
  */
-export function enrichCounterCheck(check) {
+export function enrichCounterCheck(check, opts) {
   if (!check) return null;
+  opts = opts || {};
+  var draftMap = opts.draftPacked || opts.draftMap || {};
   var rows = (check.rows || []).map(function (r) {
     var size = parseItemSize(r.desc);
+    var sku = String(r.sku || "")
+      .trim()
+      .toUpperCase();
+    var draftPacked = Number(draftMap[sku]) || 0;
     return Object.assign({}, r, {
       type: String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase(),
       size: size,
       swapWith: "",
       swapNote: "",
       swapped: false,
+      draftPacked: draftPacked,
     });
   });
   var bySku = {};
@@ -1428,12 +1438,26 @@ export function enrichCounterCheck(check) {
       return r.status === status;
     });
   }
-  var swappedRows = rows.filter(function (r) {
-    return r.swapped;
-  });
+  function sliceIssue(issue) {
+    return rows.filter(function (r) {
+      return counterCheckRowMatchesIssue(r, issue);
+    });
+  }
+  var swappedRows = sliceIssue("swapped");
+  var notStarted = sliceIssue("notStarted");
+  var partial = sliceIssue("partial");
+  var nearDone = sliceIssue("nearDone");
+  var unsaved = sliceIssue("unsaved");
   var totals = Object.assign({}, check.totals || {}, {
     swappedSku: swappedRows.length,
     swappedPairs: pairs.length,
+    notStartedSku: notStarted.length,
+    partialSku: partial.length,
+    nearDoneSku: nearDone.length,
+    unsavedSku: unsaved.length,
+    unsavedPcs: unsaved.reduce(function (n, r) {
+      return n + (Number(r.draftPacked) || 0);
+    }, 0),
   });
   return Object.assign({}, check, {
     rows: rows,
@@ -1442,76 +1466,246 @@ export function enrichCounterCheck(check) {
     missing: slice("missing"),
     done: slice("done"),
     swapped: swappedRows,
+    notStarted: notStarted,
+    partial: partial,
+    nearDone: nearDone,
+    unsaved: unsaved,
     swapPairs: pairs,
     totals: totals,
   });
 }
 
-function counterCheckRowQty(r) {
+/**
+ * Chip / filter defs for Counter check issue row.
+ * Overlapping views (notStarted+partial = leftover); add new keys here + matcher.
+ */
+export var COUNTER_CHECK_ISSUE_DEFS = [
+  { key: "ALL", label: "All" },
+  { key: "notStarted", label: "ยังไม่เริ่ม" },
+  { key: "partial", label: "แพ็คบางส่วน" },
+  { key: "nearDone", label: "ใกล้ครบ" },
+  { key: "leftover", label: "ขาด" },
+  { key: "over", label: "เกิน" },
+  { key: "missing", label: "No POS" },
+  { key: "done", label: "ครบ" },
+  { key: "swapped", label: "สลับ" },
+  { key: "unsaved", label: "ยังไม่บันทึก" },
+];
+
+export var COUNTER_CHECK_TYPE_DEFS = [
+  { key: "ALL", label: "All" },
+  { key: "STOCK", label: "Stock" },
+  { key: "TESTER", label: "Tester" },
+  { key: "GWPS", label: "GWPs" },
+  { key: "OTH", label: "Other" },
+];
+
+/**
+ * Left pcs for one counter-check row — same as All SKUs "Left":
+ * max(0, POS SOH − packed). Prefer stored `left` when present.
+ */
+function counterCheckRowRemaining(r) {
   if (!r) return 0;
-  if (r.status === "leftover") return Number(r.left) || 0;
-  if (r.status === "over") return Number(r.over) || 0;
-  if (r.status === "missing") return Number(r.packed) || 0;
-  return 0;
+  if (r.left != null && r.left !== "") {
+    var stored = Number(r.left);
+    if (isFinite(stored)) return stored > 0 ? stored : 0;
+  }
+  var soh = Number(r.soh) || 0;
+  var packed = Number(r.packed) || 0;
+  var rem = soh - packed;
+  return rem > 0 ? rem : 0;
 }
 
-/** Type chip counts for counter-check rows (SKU · discrepancy qty). */
+/** Normalize issue chip / filter keys (Thai aliases → canonical). */
+export function normalizeCounterCheckIssueCat(issue) {
+  var ic = String(issue || "ALL")
+    .trim()
+    .toLowerCase();
+  if (!ic || ic === "all") return "ALL";
+  if (ic === "ขาด" || ic === "short" || ic === "leftover") return "leftover";
+  if (ic === "เกิน" || ic === "over") return "over";
+  if (ic === "nopos" || ic === "no_pos" || ic === "no pos" || ic === "missing")
+    return "missing";
+  if (ic === "ครบ" || ic === "ok" || ic === "done") return "done";
+  if (ic === "สลับ" || ic === "swap" || ic === "swapped") return "swapped";
+  if (
+    ic === "ยังไม่เริ่ม" ||
+    ic === "notstarted" ||
+    ic === "not_started" ||
+    ic === "not-started"
+  )
+    return "notStarted";
+  if (
+    ic === "แพ็คบางส่วน" ||
+    ic === "partial" ||
+    ic === "part" ||
+    ic === "inprogress"
+  )
+    return "partial";
+  if (
+    ic === "ใกล้ครบ" ||
+    ic === "neardone" ||
+    ic === "near_done" ||
+    ic === "near-done"
+  )
+    return "nearDone";
+  if (
+    ic === "ยังไม่บันทึก" ||
+    ic === "unsaved" ||
+    ic === "draft" ||
+    ic === "open"
+  )
+    return "unsaved";
+  return String(issue || "").trim() || "ALL";
+}
+
+/**
+ * Whether a row belongs in an issue chip / filter (overlapping views allowed).
+ * ขาด = leftover status; ยังไม่เริ่ม / แพ็คบางส่วน partition leftover;
+ * ใกล้ครบ = packed>0 and left∈{1,2}; ยังไม่บันทึก = draftPacked>0.
+ */
+export function counterCheckRowMatchesIssue(r, issueCat) {
+  if (!r) return false;
+  var ic = normalizeCounterCheckIssueCat(issueCat);
+  if (!ic || ic === "ALL") return true;
+  var soh = Number(r.soh) || 0;
+  var packed = Number(r.packed) || 0;
+  var left = counterCheckRowRemaining(r);
+  if (ic === "swapped") return !!r.swapped;
+  if (ic === "leftover" || ic === "over" || ic === "missing" || ic === "done") {
+    return String(r.status || "") === ic;
+  }
+  if (ic === "notStarted") return soh > 0 && packed === 0;
+  if (ic === "partial") return soh > 0 && packed > 0 && packed < soh;
+  if (ic === "nearDone") return packed > 0 && left >= 1 && left <= 2;
+  if (ic === "unsaved") return (Number(r.draftPacked) || 0) > 0;
+  return String(r.status || "") === ic;
+}
+
+/**
+ * Overlapping flag labels for Excel Flags column (Thai).
+ * @returns {string[]}
+ */
+export function counterCheckRowFlags(r) {
+  var flags = [];
+  if (!r) return flags;
+  if (counterCheckRowMatchesIssue(r, "notStarted")) flags.push("ยังไม่เริ่ม");
+  if (counterCheckRowMatchesIssue(r, "partial")) flags.push("แพ็คบางส่วน");
+  if (counterCheckRowMatchesIssue(r, "nearDone")) flags.push("ใกล้ครบ");
+  if (r.swapped) flags.push("สลับ");
+  if (counterCheckRowMatchesIssue(r, "unsaved")) flags.push("ยังไม่บันทึก");
+  return flags;
+}
+
+/**
+ * Aggregate SKU / packed / remaining for a counter-check row set.
+ * Remaining = sum of Left (SOH − packed, min 0) — matches All SKUs Left.
+ * Packed includes No POS rows so totals reconcile with Summary Packed pcs.
+ * @returns {{ sku: number, packed: number, remaining: number }}
+ */
+export function counterCheckRowStats(rows, opts) {
+  opts = opts || {};
+  var useDraft = !!opts.useDraftPacked;
+  var out = { sku: 0, packed: 0, remaining: 0 };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    out.sku += 1;
+    out.packed += useDraft
+      ? Number(r.draftPacked) || 0
+      : Number(r.packed) || 0;
+    out.remaining += counterCheckRowRemaining(r);
+  });
+  return out;
+}
+
+function emptyChipStat() {
+  return { sku: 0, packed: 0, remaining: 0 };
+}
+
+function addChipStat(bucket, r, useDraft) {
+  bucket.sku += 1;
+  bucket.packed += useDraft
+    ? Number(r.draftPacked) || 0
+    : Number(r.packed) || 0;
+  bucket.remaining += counterCheckRowRemaining(r);
+}
+
+/**
+ * Two-line chip copy: title = "ขาด 422", sub = "แพ็ค 87 · เหลือ 3485".
+ * Pure string helper so UI stays thin and future issue keys reuse the same shape.
+ */
+export function formatCounterCheckChipLines(label, stats) {
+  var s = stats || emptyChipStat();
+  return {
+    title: String(label || "") + " " + (Number(s.sku) || 0),
+    sub:
+      "แพ็ค " +
+      (Number(s.packed) || 0) +
+      " · เหลือ " +
+      (Number(s.remaining) || 0),
+  };
+}
+
+/**
+ * Type chip stats (Stock/Tester/GWPs/Other) for a row set already scoped by
+ * the other filter (e.g. current issue). Keys stay stable for new groups.
+ * @returns {{ ALL, STOCK, TESTER, GWPS, OTH }} each { sku, packed, remaining }
+ */
 export function counterCheckTypeCounts(rows) {
   var out = {
-    ALL: { sku: 0, qty: 0 },
-    STOCK: { sku: 0, qty: 0 },
-    TESTER: { sku: 0, qty: 0 },
-    GWPS: { sku: 0, qty: 0 },
-    OTH: { sku: 0, qty: 0 },
+    ALL: emptyChipStat(),
+    STOCK: emptyChipStat(),
+    TESTER: emptyChipStat(),
+    GWPS: emptyChipStat(),
+    OTH: emptyChipStat(),
   };
   (rows || []).forEach(function (r) {
     if (!r) return;
-    var q = counterCheckRowQty(r);
     var t = String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase();
     if (t === "OTHER") t = "OTH";
     if (!out[t]) t = "OTH";
-    out.ALL.sku += 1;
-    out.ALL.qty += q;
-    out[t].sku += 1;
-    out[t].qty += q;
+    addChipStat(out.ALL, r, false);
+    addChipStat(out[t], r, false);
   });
   return out;
 }
 
 /**
- * Issue chip counts (ขาด/เกิน/No POS/ครบ/สลับ) within a row set.
- * @returns {{ ALL, leftover, over, missing, done, swapped }}
+ * Issue chip stats within a row set already scoped by the other filter.
+ * Includes overlapping views (notStarted/partial/nearDone/unsaved).
+ * Unsaved.packed = sum(draftPacked) so the chip shows draft pcs.
+ * @returns {Record<string, { sku: number, packed: number, remaining: number }>}
  */
 export function counterCheckIssueCounts(rows) {
   var out = {
-    ALL: { sku: 0, qty: 0 },
-    leftover: { sku: 0, qty: 0 },
-    over: { sku: 0, qty: 0 },
-    missing: { sku: 0, qty: 0 },
-    done: { sku: 0, qty: 0 },
-    swapped: { sku: 0, qty: 0 },
+    ALL: emptyChipStat(),
+    notStarted: emptyChipStat(),
+    partial: emptyChipStat(),
+    nearDone: emptyChipStat(),
+    leftover: emptyChipStat(),
+    over: emptyChipStat(),
+    missing: emptyChipStat(),
+    done: emptyChipStat(),
+    swapped: emptyChipStat(),
+    unsaved: emptyChipStat(),
   };
   (rows || []).forEach(function (r) {
     if (!r) return;
-    var q = counterCheckRowQty(r);
-    out.ALL.sku += 1;
-    out.ALL.qty += q;
-    var st = String(r.status || "");
-    if (out[st]) {
-      out[st].sku += 1;
-      out[st].qty += q;
-    }
-    if (r.swapped) {
-      out.swapped.sku += 1;
-      out.swapped.qty += q;
-    }
+    addChipStat(out.ALL, r, false);
+    COUNTER_CHECK_ISSUE_DEFS.forEach(function (def) {
+      if (def.key === "ALL") return;
+      if (!counterCheckRowMatchesIssue(r, def.key)) return;
+      if (!out[def.key]) out[def.key] = emptyChipStat();
+      addChipStat(out[def.key], r, def.key === "unsaved");
+    });
   });
   return out;
 }
 
 /**
  * Filter counter-check rows by search / brand / typeCat / issueCat.
- * issueCat: ALL|leftover|over|missing|done|swapped (ขาด=leftover, No POS=missing, สลับ=swapped).
+ * issueCat supports overlapping views (notStarted|partial|nearDone|unsaved)
+ * plus leftover|over|missing|done|swapped.
  */
 export function filterCounterCheckRows(rows, opts) {
   opts = opts || {};
@@ -1523,14 +1717,7 @@ export function filterCounterCheckRows(rows, opts) {
     .trim()
     .toUpperCase();
   if (tc === "OTHER") tc = "OTH";
-  var ic = String(opts.issueCat || opts.tab || "ALL")
-    .trim()
-    .toLowerCase();
-  if (ic === "ขาด" || ic === "short") ic = "leftover";
-  if (ic === "เกิน") ic = "over";
-  if (ic === "nopos" || ic === "no_pos" || ic === "no pos") ic = "missing";
-  if (ic === "ครบ" || ic === "ok") ic = "done";
-  if (ic === "สลับ" || ic === "swap") ic = "swapped";
+  var ic = normalizeCounterCheckIssueCat(opts.issueCat || opts.tab || "ALL");
   return (rows || []).filter(function (r) {
     if (!r) return false;
     if (tc && tc !== "ALL") {
@@ -1538,13 +1725,7 @@ export function filterCounterCheckRows(rows, opts) {
       if (t === "OTHER") t = "OTH";
       if (t !== tc) return false;
     }
-    if (ic && ic !== "all") {
-      if (ic === "swapped") {
-        if (!r.swapped) return false;
-      } else if (String(r.status || "") !== ic) {
-        return false;
-      }
-    }
+    if (ic && ic !== "ALL" && !counterCheckRowMatchesIssue(r, ic)) return false;
     if (b && String(r.brand || "").toLowerCase() !== b) return false;
     if (!q) return true;
     var hay =
@@ -1562,21 +1743,27 @@ export function filterCounterCheckRows(rows, opts) {
 }
 
 export function packingCounterCheckIssueLabel(issue) {
-  var ic = String(issue || "").toLowerCase();
-  if (ic === "leftover") return "ขาด";
-  if (ic === "over") return "เกิน";
-  if (ic === "missing") return "No POS";
-  if (ic === "done") return "ครบ";
-  if (ic === "swapped") return "สลับ";
+  var ic = normalizeCounterCheckIssueCat(issue);
+  if (ic === "ALL") return "All";
+  for (var i = 0; i < COUNTER_CHECK_ISSUE_DEFS.length; i++) {
+    if (COUNTER_CHECK_ISSUE_DEFS[i].key === ic)
+      return COUNTER_CHECK_ISSUE_DEFS[i].label;
+  }
   return packingCounterCheckStatusLabel(issue);
 }
 
 export function packingCounterCheckStatusLabel(status) {
+  var ic = normalizeCounterCheckIssueCat(status);
+  if (ic === "leftover") return "ยังไม่แพ็ค";
+  if (ic === "notStarted") return "ยังไม่เริ่ม";
+  if (ic === "partial") return "แพ็คบางส่วน";
+  if (ic === "nearDone") return "ใกล้ครบ";
+  if (ic === "unsaved") return "ยังไม่บันทึก";
+  if (ic === "over") return "เกิน";
+  if (ic === "missing") return "ไม่มีใน POS";
+  if (ic === "done") return "ครบ";
+  if (ic === "swapped") return "สลับ";
   if (status === "leftover") return "ยังไม่แพ็ค";
-  if (status === "over") return "เกิน";
-  if (status === "missing") return "ไม่มีใน POS";
-  if (status === "done") return "ครบ";
-  if (status === "swapped") return "สลับ";
   return String(status || "");
 }
 
@@ -1638,6 +1825,7 @@ var CTR_CHECK_ALL_HEADERS = [
   "Status",
   "Group",
   "Issue",
+  "Flags",
   "Brand",
   "SKU",
   "Barcode",
@@ -1650,8 +1838,21 @@ var CTR_CHECK_ALL_HEADERS = [
   "PK nos",
 ];
 
-var CTR_CHECK_SKU_TEXT_COLS = [4, 5]; // SKU, Barcode
-var CTR_CHECK_SKU_COLS = [12, 10, 10, 14, 14, 16, 40, 10, 10, 10, 10, 18, 28];
+var CTR_CHECK_SKU_TEXT_COLS = [5, 6]; // SKU, Barcode
+var CTR_CHECK_SKU_COLS = [12, 10, 10, 22, 14, 14, 16, 40, 10, 10, 10, 10, 18, 28];
+
+/** Status sheet order for Excel (full unfiltered lists). */
+var CTR_CHECK_STATUS_SHEETS = [
+  { key: "notStarted", name: "ยังไม่เริ่ม" },
+  { key: "partial", name: "แพ็คบางส่วน" },
+  { key: "nearDone", name: "ใกล้ครบ" },
+  { key: "leftover", name: "ยังไม่แพ็ค" },
+  { key: "over", name: "เกิน" },
+  { key: "missing", name: "ไม่มีใน POS" },
+  { key: "done", name: "ครบ" },
+  { key: "swapped", name: "สลับ" },
+  { key: "unsaved", name: "ยังไม่บันทึก" },
+];
 
 /**
  * Pure workbook payload for Counter check Excel export (no SheetJS).
@@ -1764,6 +1965,7 @@ export function buildCounterCheckExcelData(opts) {
       packingCounterCheckStatusLabel(r.status),
       group,
       issue,
+      counterCheckRowFlags(r).join(" · "),
       String(r.brand || ""),
       String(r.sku || ""),
       String(r.barcode || ""),
@@ -1865,15 +2067,13 @@ export function buildCounterCheckExcelData(opts) {
   ];
 
   if (opts.includeStatusSheets) {
-    [
-      { key: "leftover", name: "ยังไม่แพ็ค" },
-      { key: "over", name: "เกิน" },
-      { key: "missing", name: "ไม่มีใน POS" },
-      { key: "done", name: "ครบ" },
-      { key: "swapped", name: "สลับ" },
-    ].forEach(function (s) {
+    CTR_CHECK_STATUS_SHEETS.forEach(function (s) {
       // Full unfiltered status lists — never apply the UI issue/group filter here
-      var list = check[s.key] || [];
+      var list =
+        check[s.key] ||
+        allRows.filter(function (r) {
+          return counterCheckRowMatchesIssue(r, s.key);
+        });
       sheets.push({
         name: s.name,
         aoa: [CTR_CHECK_ALL_HEADERS.slice()].concat(list.map(skuRow)),
@@ -2330,6 +2530,13 @@ if (typeof window !== "undefined") {
     descsVerySimilar: descsVerySimilar,
     detectCounterCheckSwaps: detectCounterCheckSwaps,
     enrichCounterCheck: enrichCounterCheck,
+    COUNTER_CHECK_ISSUE_DEFS: COUNTER_CHECK_ISSUE_DEFS,
+    COUNTER_CHECK_TYPE_DEFS: COUNTER_CHECK_TYPE_DEFS,
+    counterCheckRowStats: counterCheckRowStats,
+    counterCheckRowFlags: counterCheckRowFlags,
+    counterCheckRowMatchesIssue: counterCheckRowMatchesIssue,
+    normalizeCounterCheckIssueCat: normalizeCounterCheckIssueCat,
+    formatCounterCheckChipLines: formatCounterCheckChipLines,
     counterCheckTypeCounts: counterCheckTypeCounts,
     counterCheckIssueCounts: counterCheckIssueCounts,
     filterCounterCheckRows: filterCounterCheckRows,
