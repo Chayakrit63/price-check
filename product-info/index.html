@@ -757,10 +757,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261127b"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261127b"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127c"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127c"></script>
 <script>
-var APP_VER="20261127b";
+var APP_VER="20261127c";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -1355,6 +1355,39 @@ function catalogRowBucket(row){
 function pkPackBoxActive(){return MODE==="pack"&&PKVIEW==="box"&&!!curBox();}
 function infoSearchActive(){return MODE==="info";}
 function searchTypeBarActive(){return pkPackBoxActive()||infoSearchActive();}
+/** Desktop / fine pointer: keep #q focused for USB wedge scanners. Touch-primary: blur so keyboard stays closed + cam can resume. */
+function keepScanFocusPreferred(){
+  try{
+    if(window.matchMedia){
+      if(matchMedia("(pointer: fine)").matches) return true;
+      if(matchMedia("(pointer: coarse)").matches) return false;
+    }
+  }catch(e){}
+  return !("ontouchstart" in window);
+}
+var skipSugOnFocus=false;
+var pkEnterLockUntil=0;
+/** After pack add/error: clear #q, close recent/sug, restore focus on desktop (never replace the input node). */
+function refocusPackScanInput(){
+  if(!pkPackBoxActive()) return;
+  if(pkSheetOpen) return;
+  hideSug();
+  var qel=$("q"); if(!qel) return;
+  qel.value="";
+  if(keepScanFocusPreferred()){
+    skipSugOnFocus=true;
+    setTyping(true);
+    try{
+      qel.focus({preventScroll:true});
+      if(typeof qel.select==="function") qel.select();
+    }catch(e){
+      try{qel.focus(); if(typeof qel.select==="function") qel.select();}catch(e2){}
+    }
+    setTimeout(function(){ skipSugOnFocus=false; }, 0);
+  }else{
+    try{qel.blur();}catch(e){}
+  }
+}
 function searchTypeGet(){
   if(pkPackBoxActive()) return PK.typeCat||"ALL";
   if(infoSearchActive()) return INFO.typeCat||"ALL";
@@ -1374,6 +1407,7 @@ function searchTypeSet(v, opts){
     if(on){on.classList.remove("flash-on");void on.offsetWidth;on.classList.add("flash-on");}
   }
   if($("q")&&$("q").value.trim().length>=2) runSuggest();
+  else if(pkPackBoxActive()&&keepScanFocusPreferred()&&!opts.skipFocus) refocusPackScanInput();
 }
 function searchTypeFilterRows(rows){
   if(!searchTypeBarActive()) return rows?rows.slice():[];
@@ -1398,6 +1432,7 @@ function searchRenderTypeChips(counts){
   }).join("");
   box.onclick=function(e){
     var b=e.target.closest("[data-t]"); if(!b) return;
+    // Desktop: searchTypeSet restores #q focus for continuous USB scanning
     searchTypeSet(b.getAttribute("data-t"));
   };
 }
@@ -1448,6 +1483,7 @@ function searchScanTypeBlocked(allHits,text,sub,onResolved){
 function pkScanTypeBlocked(allHits,text,qty){
   searchScanTypeBlocked(allHits,text,"เลือกเปลี่ยนประเภทแล้วเพิ่ม",function(row,code){
     if(pkAdd(row,code,qty,{fromPick:true})) pkAfter();
+    refocusPackScanInput();
   });
 }
 function infoScanTypeBlocked(allHits,text){
@@ -1589,7 +1625,12 @@ function pickSug(row,qtyOverride){
   var pq=parsePkSearchQty(raw);
   var qty=qtyOverride!=null?qtyOverride:pq.qty;
   hideSug();
-  if(MODE==="pack"&&PKVIEW==="box"&&curBox()){$("q").value="";$("q").blur();if(pkAdd(row,pq.query||raw||row.sku,qty,{typed:true,fromPick:true})) pkAfter();return;}
+  if(MODE==="pack"&&PKVIEW==="box"&&curBox()){
+    $("q").value="";
+    if(pkAdd(row,pq.query||raw||row.sku,qty,{typed:true,fromPick:true})) pkAfter();
+    refocusPackScanInput();
+    return;
+  }
   var qScan=searchQueryText(raw)||row.sku;
   var listRows=(SUGS||[]).map(function(h){return h&&h.row;}).filter(Boolean);
   if(listRows.length<2&&LASTLIST&&LASTLIST.hits&&LASTLIST.hits.length>1) listRows=LASTLIST.hits;
@@ -1643,10 +1684,18 @@ function onQueryInput(){
 function searchManual(){
   var q=$("q").value.trim();
   if(!q){$("q").focus();return;}
+  if(sugTimer){clearTimeout(sugTimer);sugTimer=null;}
   var pksc=parsePackScan(q);
   if(pksc){hideSug();$("q").value="";$("q").blur();openBoxNo(pksc.boxNo, pksc.boxSeq||0);return;}
   if(MODE==="count"&&SC.view==="work"&&scCur()){hideSug();$("q").value="";$("q").blur();scScan(q,true);return;}
-  if(MODE==="pack"&&PKVIEW==="box"&&curBox()){hideSug();$("q").value="";$("q").blur();pkScan(q,true);return;}
+  if(MODE==="pack"&&PKVIEW==="box"&&curBox()){
+    // USB wedge: digits + Enter. Do not blur on desktop — continuous scan needs focus.
+    hideSug();
+    $("q").value="";
+    pkScan(q,true);
+    refocusPackScanInput();
+    return;
+  }
   if(MODE==="info"){
     hideSug();
     $("q").value="";$("q").blur();
@@ -1734,9 +1783,14 @@ $("go").onclick=searchManual;
 $("q").addEventListener("input",onQueryInput);
 $("q").addEventListener("focus",function(){
   setTyping(true);
+  if(skipSugOnFocus){
+    hideSug();
+    return;
+  }
   if($("q").value.trim().length>=2) runSuggest();
   else if(searchTypeBarActive()) showRecentSuggest();
   setTimeout(function(){
+    if(skipSugOnFocus) return;
     try{$("inwrap").scrollIntoView({block:"start",behavior:"smooth"});}catch(e){}
     placeSug();
   },240);
@@ -1759,7 +1813,16 @@ $("q").addEventListener("keydown",function(e){
     if(on) on.scrollIntoView({block:"nearest"});
     return;
   }
-  if(e.key==="Enter"){e.preventDefault();searchManual();}
+  if(e.key==="Enter"){
+    // Ignore IME composition Enter; flush pending suggest debounce so wedge digits aren't raced
+    if(e.isComposing||e.keyCode===229) return;
+    e.preventDefault();
+    if(sugTimer){clearTimeout(sugTimer);sugTimer=null;}
+    var now=Date.now();
+    if(pkPackBoxActive()&&now<pkEnterLockUntil) return;
+    if(pkPackBoxActive()) pkEnterLockUntil=now+120;
+    searchManual();
+  }
 });
 document.addEventListener("mousedown",function(e){
   var wrap=$("inwrap");
@@ -3709,6 +3772,8 @@ function pkShow(v){
       pkFlushPackOps(curBox().boxNo);
       pkPullBoxSync();
     }
+    // Laptop + USB scanner: ready for continuous scans without an extra click
+    if(keepScanFocusPreferred()) setTimeout(refocusPackScanInput, 60);
   }else{
     pkStopPackPoll();
     show($("scan"),false);
@@ -4189,20 +4254,27 @@ function pkScan(text,typed){
   var hits=searchTypeFilterRows(allHits);
   if(!hits.length&&allHits&&allHits.length){pkScanTypeBlocked(allHits,code,qty);pkAfter();return;}
   var act=window.CatalogCore&&CatalogCore.packingLookupAction?CatalogCore.packingLookupAction(hits?hits.length:0):(hits&&hits.length===1?"add":(hits&&hits.length>1?"pick":"miss"));
-  if(act==="add"){if(pkAdd(hits[0],code,qty,{typed:!!typed})) pkAfter(); return;}
+  if(act==="add"){
+    if(pkAdd(hits[0],code,qty,{typed:!!typed})) pkAfter();
+    // Camera path has no searchManual refocus — keep desktop focus for continuous wedge/hybrid use
+    if(!typed) refocusPackScanInput();
+    return;
+  }
   if(act==="pick"){
     pkPick(hits,code,"พบ "+hits.length+" SKU ที่ใช้รหัสนี้ · เลือกสินค้าที่แพ็ค / pick one",false,qty);
     return;
   }
   var nl=findLine(b,"N:"+norm(code).toUpperCase());
   if(nl){
-    if(!pkConfirmBigQty(qty)) return;
+    if(!pkConfirmBigQty(qty)){ if(!typed) refocusPackScanInput(); return; }
     var prevTouched=nl.touched, prevTouchSeq=Number(b.touchSeq)||0;
     nl.qty=(Number(nl.qty)||0)+qty;pkMarkTouched(b,nl);
     pkUndo={boxId:b.id,lineKey:nl.k,boxSeq:boxSeqOf(nl),addedQty:qty,created:false,prevTouched:prevTouched,prevTouchSeq:prevTouchSeq,desc:nl.desc,sku:""};
     b.dirty=true;pkTouched=nl.k;pkPersist();pkRenderBox();
     pkAfterAddFeedback(b,nl,qty,{});
-    pkAfter();return;
+    pkAfter();
+    if(!typed) refocusPackScanInput();
+    return;
   }
   if(typed){
     var s=suggest(code);
@@ -4254,7 +4326,11 @@ function pkPick(rows,text,msg,allowUnknown,qty){
     });
   var body=openSheet("เลือกสินค้า · Pick item",msg+" · "+String(text||"").trim());
   ordered.forEach(function(row){
-    var btn=sugButton(row,"",function(){closeSheet(false);if(pkAdd(row,text,qty,{fromPick:true})) pkAfter();});
+    var btn=sugButton(row,"",function(){
+      closeSheet(false);
+      if(pkAdd(row,text,qty,{fromPick:true})) pkAfter();
+      refocusPackScanInput();
+    });
     btn.classList.add("pk-pick");
     var bucket=catalogRowBucket(row);
     var type=document.createElement("span");
@@ -4288,8 +4364,9 @@ function pkUnknown(code){
     if(!d){toast("ใส่รายละเอียดสินค้า · Description","err");$("u-desc").focus();return;}
     var q=$("u-qty").value;
     closeSheet(false); if(pkAddUnknown(code,d,q)) pkAfter();
+    refocusPackScanInput();
   };
-  $("u-search").onclick=function(){closeSheet(false);$("q").value="";$("q").focus();};
+  $("u-search").onclick=function(){closeSheet(false);refocusPackScanInput();};
   setTimeout(function(){try{$("u-desc").focus();}catch(e){}},80);
 }
 function pkDoSaveBox(){
