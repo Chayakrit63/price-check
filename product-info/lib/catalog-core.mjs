@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127d";
+export var VERSION = "20261127e";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -1110,14 +1110,17 @@ export function packingCounterCheck(sohMap, pkBundles) {
   var missingPcs = 0;
   var missing = [];
   Object.keys(packed).forEach(function (sku) {
-    if (sohMap[sku]) return;
+    // Only positive POS SOH counts as "in POS". Qty 0 / empty entries must not
+    // swallow packed lines (e.g. -TST pseudo-SKUs, or stale zero rows).
+    var sohQty = sohMap[sku] ? Number(sohMap[sku].qty) || 0 : 0;
+    if (sohQty > 0) return;
     missingSku++;
     missingPcs += packed[sku];
     var m = meta[sku] || { desc: "", barcode: "", brand: "", boxNos: {} };
     missing.push({
       sku: sku,
-      desc: m.desc || "",
-      barcode: m.barcode || "",
+      desc: m.desc || (sohMap[sku] && sohMap[sku].desc) || "",
+      barcode: m.barcode || (sohMap[sku] && sohMap[sku].barcode) || "",
       brand: m.brand || "",
       soh: 0,
       packed: packed[sku],
@@ -1652,7 +1655,10 @@ var CTR_CHECK_SKU_COLS = [12, 10, 10, 14, 14, 16, 40, 10, 10, 10, 10, 18, 28];
 
 /**
  * Pure workbook payload for Counter check Excel export (no SheetJS).
- * Sheets: Summary, All SKUs, By PK (+ optional per-status sheets).
+ * Sheets: Summary, All SKUs (always full), By PK, optional per-status sheets
+ * (always full), optional Filtered sheet for the active UI filter.
+ *
+ * Totals must reconcile: sum(All SKUs.Packed) == sum(By PK.Qty) == Summary Packed pcs.
  *
  * @param {{
  *   counter: string,
@@ -1680,18 +1686,26 @@ export function buildCounterCheckExcelData(opts) {
   var fileName = "CounterCheck_" + short + "_" + stamp + ".xlsx";
   var t = check.totals;
   var filter = opts.filter || null;
+  var allRows = check.rows || [];
   var viewRows =
     opts.viewRows ||
-    (filter
-      ? filterCounterCheckRows(check.rows || [], filter)
-      : check.rows || []);
+    (filter ? filterCounterCheckRows(allRows, filter) : allRows.slice());
+  var filterActive = false;
+  if (filter) {
+    var tc = String(filter.typeCat || "ALL").toUpperCase();
+    var ic = String(filter.issueCat || "ALL").toLowerCase();
+    if (tc && tc !== "ALL") filterActive = true;
+    if (ic && ic !== "all") filterActive = true;
+    if (filter.brand) filterActive = true;
+    if (String(filter.query || filter.q || "").trim()) filterActive = true;
+  }
 
   var pkSet = {};
   bundles.forEach(function (b) {
     var no = String((b && b.boxNo) || "").trim();
     if (no && no !== "__open__") pkSet[no] = 1;
   });
-  (check.rows || []).forEach(function (r) {
+  allRows.forEach(function (r) {
     (r.boxNos || []).forEach(function (n) {
       if (n && n !== "__open__" && n !== "(เปิดอยู่)") pkSet[n] = 1;
     });
@@ -1704,7 +1718,7 @@ export function buildCounterCheckExcelData(opts) {
   }
 
   var filterNote = "";
-  if (filter) {
+  if (filterActive) {
     var bits = [];
     if (filter.typeCat && String(filter.typeCat).toUpperCase() !== "ALL")
       bits.push("Group=" + String(filter.typeCat).toUpperCase());
@@ -1734,8 +1748,9 @@ export function buildCounterCheckExcelData(opts) {
     ["Not-in-POS SKU", t.missingSku],
     ["Not-in-POS pcs", t.missingPcs || 0],
     ["Swapped SKU", t.swappedSku || 0],
+    ["All SKUs rows", allRows.length],
     ["Active filters", filterNote || "—"],
-    ["Filtered SKU rows", viewRows.length],
+    ["Filtered SKU rows", filterActive ? viewRows.length : "—"],
   ];
 
   function skuRow(r) {
@@ -1762,25 +1777,62 @@ export function buildCounterCheckExcelData(opts) {
     ];
   }
 
-  var allAoa = [CTR_CHECK_ALL_HEADERS.slice()].concat(viewRows.map(skuRow));
+  // Always full unfiltered set so Packed totals reconcile with By PK / Summary
+  var allAoa = [CTR_CHECK_ALL_HEADERS.slice()].concat(allRows.map(skuRow));
 
-  var byPkAoa = [["PK no", "Box", "SKU", "Barcode", "Description", "Brand", "Qty"]];
+  // SKU → All SKUs row (same matching key as packingCounterCheck)
+  var bySku = {};
+  allRows.forEach(function (r) {
+    var k = String((r && r.sku) || "")
+      .trim()
+      .toUpperCase();
+    if (k) bySku[k] = r;
+  });
+
+  var byPkAoa = [
+    [
+      "PK no",
+      "Box",
+      "SKU",
+      "Barcode",
+      "Description",
+      "Brand",
+      "Qty",
+      "POS SOH",
+      "Remaining SOH",
+    ],
+  ];
+  var byPkPacked = 0;
   bundles.forEach(function (b) {
     var no = String((b && b.boxNo) || "").trim() || "(เปิดอยู่)";
     if (no === "__open__") no = "(เปิดอยู่)";
     (b.lines || []).forEach(function (l) {
       var qty = Number(l.qty) || 0;
       if (qty <= 0) return;
+      byPkPacked += qty;
       var box =
         Math.round(Number(l.boxSeq != null ? l.boxSeq : l.box) || 1) || 1;
+      var sku = String(l.sku || "")
+        .trim()
+        .toUpperCase();
+      var info = bySku[sku];
+      var posSoh = info ? Number(info.soh) || 0 : 0;
+      var packedTotal = info ? Number(info.packed) || 0 : qty;
+      // Same as All SKUs Left for leftover; negative when over / not in POS
+      var remaining = posSoh - packedTotal;
+      var notInPos = !info || info.status === "missing" || !(posSoh > 0);
+      var posCell = notInPos ? "" : posSoh;
+      var remCell = notInPos ? remaining + " · not in POS" : remaining;
       byPkAoa.push([
         no,
         box,
-        String(l.sku || "").trim().toUpperCase(),
+        sku,
         String(l.barcode || l.ean || ""),
         String(l.desc || ""),
         String(l.brand || ""),
         qty,
+        posCell,
+        remCell,
       ]);
     });
   });
@@ -1808,7 +1860,7 @@ export function buildCounterCheckExcelData(opts) {
       textCols: [2, 3],
       freeze: true,
       autofilter: true,
-      cols: [16, 6, 14, 16, 40, 14, 8],
+      cols: [16, 6, 14, 16, 40, 14, 8, 10, 16],
     },
   ];
 
@@ -1820,15 +1872,8 @@ export function buildCounterCheckExcelData(opts) {
       { key: "done", name: "ครบ" },
       { key: "swapped", name: "สลับ" },
     ].forEach(function (s) {
+      // Full unfiltered status lists — never apply the UI issue/group filter here
       var list = check[s.key] || [];
-      if (filter) {
-        list = filterCounterCheckRows(list, Object.assign({}, filter, { issueCat: "ALL" }));
-        if (s.key !== "swapped" && filter.issueCat && String(filter.issueCat).toLowerCase() !== "all") {
-          var want = String(filter.issueCat).toLowerCase();
-          if (want === "swapped") list = list.filter(function (r) { return r.swapped; });
-          else if (s.key !== want) list = [];
-        }
-      }
       sheets.push({
         name: s.name,
         aoa: [CTR_CHECK_ALL_HEADERS.slice()].concat(list.map(skuRow)),
@@ -1840,11 +1885,26 @@ export function buildCounterCheckExcelData(opts) {
     });
   }
 
+  if (filterActive) {
+    sheets.push({
+      name: "Filtered",
+      aoa: [CTR_CHECK_ALL_HEADERS.slice()].concat(viewRows.map(skuRow)),
+      textCols: CTR_CHECK_SKU_TEXT_COLS.slice(),
+      freeze: true,
+      autofilter: true,
+      cols: CTR_CHECK_SKU_COLS.slice(),
+    });
+  }
+
   return {
     fileName: fileName,
     shortName: short,
     stamp: stamp,
     pkNos: pkNos,
+    byPkPacked: byPkPacked,
+    allPacked: allRows.reduce(function (n, r) {
+      return n + (Number(r.packed) || 0);
+    }, 0),
     sheets: sheets,
   };
 }
