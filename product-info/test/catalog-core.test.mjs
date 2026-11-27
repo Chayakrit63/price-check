@@ -11,6 +11,9 @@ import {
   filterRowsByType,
   counterNamesDeduped,
   mergePinnedPlaceNames,
+  isClosedPlaceName,
+  filterClosedPlaceNames,
+  pickOpenPlaceSeed,
   stripPlaceListLabel,
   packingLookupAction,
   sortPackingLinesForDisplay,
@@ -338,6 +341,43 @@ test("packing from datalist labels", () => {
     pinned[0],
     "ICONSIAM - NICHE ADP",
   ]);
+});
+
+test("filterClosedPlaceNames hides closed counters case-insensitively", () => {
+  var closed = ["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
+  assert.equal(isClosedPlaceName(closed[0], closed), true);
+  assert.equal(
+    isClosedPlaceName("  fm x gd popup at fashion hall, siam paragon 12-22 nov 2026 ", closed),
+    true
+  );
+  assert.equal(isClosedPlaceName("ICONSIAM - NICHE ADP", closed), false);
+
+  var merged = mergePinnedPlaceNames(closed, [
+    "ICONSIAM - NICHE ADP",
+    closed[0],
+    "CENTRAL CHIDLOM - PRADA",
+  ]);
+  assert.deepEqual(filterClosedPlaceNames(merged, closed), [
+    "ICONSIAM - NICHE ADP",
+    "CENTRAL CHIDLOM - PRADA",
+  ]);
+  assert.deepEqual(
+    filterClosedPlaceNames(
+      ["FM-POP · " + closed[0], "ICON-ADP · ICONSIAM - NICHE ADP"],
+      closed
+    ),
+    ["ICON-ADP · ICONSIAM - NICHE ADP"]
+  );
+
+  assert.equal(
+    pickOpenPlaceSeed(closed[0], closed, ["ICONSIAM - NICHE ADP", closed[0]]),
+    "ICONSIAM - NICHE ADP"
+  );
+  assert.equal(
+    pickOpenPlaceSeed("CENTRAL CHIDLOM - PRADA", closed, ["ICONSIAM - NICHE ADP"]),
+    "CENTRAL CHIDLOM - PRADA"
+  );
+  assert.equal(pickOpenPlaceSeed(closed[0], closed, [closed[0]]), "");
 });
 
 test("packingLookupAction always picks on multi-SKU", () => {
@@ -946,7 +986,7 @@ test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
 });
 
 test("counter-check chip stats: packed/remaining + overlapping issue views", () => {
-  assert.equal(VERSION, "20261127g");
+  assert.equal(VERSION, "20261127h");
   assert.ok(COUNTER_CHECK_ISSUE_DEFS.some((d) => d.key === "nearDone"));
   assert.equal(normalizeCounterCheckIssueCat("ยังไม่เริ่ม"), "notStarted");
   assert.equal(normalizeCounterCheckIssueCat("ใกล้ครบ"), "nearDone");
@@ -1320,7 +1360,7 @@ test("stripBrandFromPackDesc + clipPackQrDesc", () => {
 });
 
 test("buildPackQrText: tiny keeps desc; 63 lines → SKU-only; 400 → +N more", () => {
-  assert.equal(VERSION, "20261127g");
+  assert.equal(VERSION, "20261127h");
   var meta = {
     boxNo: "PK-261127-001",
     boxSeq: 1,
