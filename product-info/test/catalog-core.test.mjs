@@ -687,14 +687,116 @@ test("buildCounterCheckExcelData Summary + All SKUs + By PK", () => {
 
   var byPk = data.sheets[2].aoa;
   assert.equal(byPk[0][0], "PK no");
+  assert.deepEqual(byPk[0].slice(6), ["Qty", "POS SOH", "Remaining SOH"]);
   assert.equal(byPk.length, 3); // header + 2 lines
   assert.equal(byPk[1][0], "PK-261122-007");
   assert.equal(byPk[1][2], "00LEAD");
   assert.equal(byPk[1][6], 1);
+  assert.equal(byPk[1][7], 2); // POS SOH
+  assert.equal(byPk[1][8], 1); // Remaining = Left
 
   var statusNames = data.sheets.slice(3).map((s) => s.name);
   assert.deepEqual(statusNames, ["ยังไม่แพ็ค", "เกิน", "ไม่มีใน POS", "ครบ", "สลับ"]);
   assert.equal(data.sheets.find((s) => s.name === "เกิน").aoa.length, 2);
+});
+
+test("counter-check Excel: filter does not shrink All SKUs; -TST + done reconcile", () => {
+  // Mimics CENTRAL CHIDLOM - PRADA export: Issue=ขาด active, Done SKUs + -TST not-in-POS
+  var soh = sohMapFromRows([
+    { sku: "STOCK1", qty: 10, desc: "Leftover stock", barcode: "111" },
+    { sku: "LD076001", qty: 1, desc: "PRADA AMBER POUR HOMME EDT TESTER 100ML", barcode: "222" },
+    { sku: "LG109900", qty: 1, desc: "U002 BANANA YELLOW LIP BALM", barcode: "333" },
+    { sku: "LE055101", qty: 1, desc: "ROUGE MONOCHROME HYPER MATTE AMBER O76 LIPSTICK", barcode: "444" },
+    // zero-qty SOH entry must not swallow a packed -TST sister SKU
+    { sku: "LG100600-TST", qty: 0, desc: "stale zero", barcode: "LG100600-TST" },
+  ]);
+  var bundles = [
+    {
+      boxNo: "PK-261127-001",
+      lines: [
+        { sku: "STOCK1", qty: 2, desc: "Leftover stock", barcode: "111" },
+        { sku: "LD076001", qty: 1, desc: "PRADA AMBER POUR HOMME EDT TESTER 100ML", barcode: "222" },
+        { sku: "LG109900", qty: 1, desc: "U002 BANANA YELLOW LIP BALM", barcode: "333" },
+        { sku: "LE055101", qty: 1, desc: "ROUGE MONOCHROME HYPER MATTE AMBER O76 LIPSTICK", barcode: "444" },
+        {
+          sku: "LG100600-TST",
+          qty: 1,
+          desc: "U002 BANANA YELLOW LIP BALM TESTER",
+          barcode: "LG100600-TST",
+        },
+        {
+          sku: "LE032000-TST",
+          qty: 1,
+          desc: "ROUGE MONOCHROME HYPER MATTE AMBER O76 LIPSTICK TESTER",
+          barcode: "LE032000-TST",
+        },
+      ],
+    },
+  ];
+  var check = enrichCounterCheck(packingCounterCheck(soh, bundles));
+  assert.equal(check.totals.packedPcs, 7);
+  assert.equal(check.totals.doneSku, 3); // LD076001, LG109900, LE055101
+  assert.equal(check.totals.leftoverSku, 1); // STOCK1
+  assert.equal(check.totals.missingSku, 2); // both -TST
+  assert.ok(check.missing.find((r) => r.sku === "LG100600-TST"));
+  assert.ok(check.missing.find((r) => r.sku === "LE032000-TST"));
+  assert.ok(check.done.find((r) => r.sku === "LD076001"));
+
+  var data = buildCounterCheckExcelData({
+    counter: "CENTRAL CHIDLOM - PRADA",
+    asOf: "27/11/2026",
+    check: check,
+    includedOpen: true,
+    bundles: bundles,
+    stamp: "20261127-1207",
+    includeStatusSheets: true,
+    filter: { issueCat: "leftover", typeCat: "ALL", query: "", brand: "" },
+  });
+
+  var summary = Object.fromEntries(data.sheets[0].aoa.slice(1));
+  assert.equal(summary["Packed pcs"], 7);
+  assert.equal(summary["Done SKU"], 3);
+  assert.equal(summary["Active filters"], "Issue=ขาด");
+  assert.equal(summary["Filtered SKU rows"], 1);
+  assert.equal(summary["All SKUs rows"], check.rows.length);
+
+  var allBody = data.sheets.find((s) => s.name === "All SKUs").aoa.slice(1);
+  assert.equal(allBody.length, check.rows.length);
+  var allPacked = allBody.reduce((n, r) => n + (Number(r[8]) || 0), 0);
+  assert.equal(allPacked, 7);
+  assert.equal(data.byPkPacked, 7);
+  assert.equal(data.allPacked, 7);
+
+  // Status sheets stay full despite Issue=ขาด filter
+  assert.equal(data.sheets.find((s) => s.name === "ครบ").aoa.length, 1 + 3);
+  assert.equal(data.sheets.find((s) => s.name === "ไม่มีใน POS").aoa.length, 1 + 2);
+  assert.equal(data.sheets.find((s) => s.name === "ยังไม่แพ็ค").aoa.length, 1 + 1);
+  assert.ok(data.sheets.find((s) => s.name === "Filtered"));
+  assert.equal(data.sheets.find((s) => s.name === "Filtered").aoa.length, 2); // header + STOCK1
+
+  var byPk = data.sheets.find((s) => s.name === "By PK").aoa;
+  assert.deepEqual(byPk[0].slice(6), ["Qty", "POS SOH", "Remaining SOH"]);
+  var byPkQty = byPk.slice(1).reduce((n, r) => n + (Number(r[6]) || 0), 0);
+  assert.equal(byPkQty, 7);
+
+  var stockLine = byPk.find((r) => r[2] === "STOCK1");
+  assert.equal(stockLine[7], 10);
+  assert.equal(stockLine[8], 8); // Remaining = All SKUs Left
+
+  var doneLine = byPk.find((r) => r[2] === "LD076001");
+  assert.equal(doneLine[7], 1);
+  assert.equal(doneLine[8], 0);
+
+  var tstLine = byPk.find((r) => r[2] === "LG100600-TST");
+  assert.equal(tstLine[7], ""); // not in POS
+  assert.match(String(tstLine[8]), /not in POS/);
+  assert.match(String(tstLine[8]), /^-1/);
+
+  // -TST present on All SKUs as ไม่มีใน POS
+  var tstAll = allBody.find((r) => r[4] === "LG100600-TST");
+  assert.ok(tstAll);
+  assert.equal(tstAll[0], "ไม่มีใน POS");
+  assert.equal(tstAll[8], 1);
 });
 
 test("parseItemSize + detectCounterCheckSwaps (sample barcode pair)", () => {
