@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127g";
+export var VERSION = "20261127h";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -436,6 +436,47 @@ export function mergePinnedPlaceNames(pinned, names) {
   (pinned || []).forEach(add);
   (names || []).forEach(add);
   return out;
+}
+
+/** Case-insensitive trim match against a closed-counter hide list. */
+export function isClosedPlaceName(name, closed) {
+  var k = String(name || "")
+    .trim()
+    .toLowerCase();
+  if (!k) return false;
+  return (closed || []).some(function (s) {
+    return (
+      String(s || "")
+        .trim()
+        .toLowerCase() === k
+    );
+  });
+}
+
+/**
+ * Drop closed counters from a place-name list (case-insensitive, trim).
+ * Also drops "CODE · Name" labels whose place name is closed.
+ */
+export function filterClosedPlaceNames(names, closed) {
+  if (!closed || !closed.length) return (names || []).slice();
+  return (names || []).filter(function (raw) {
+    var s = String(raw || "").trim();
+    if (!s) return false;
+    if (isClosedPlaceName(s, closed)) return false;
+    var place = stripPlaceListLabel(s);
+    if (place !== s && isClosedPlaceName(place, closed)) return false;
+    return true;
+  });
+}
+
+/**
+ * Seed for Counter check: keep current from if open; else first available; else "".
+ */
+export function pickOpenPlaceSeed(currentFrom, closed, available) {
+  var cur = String(currentFrom || "").trim();
+  if (cur && !isClosedPlaceName(cur, closed)) return cur;
+  var open = filterClosedPlaceNames(available || [], closed);
+  return open.length ? String(open[0]).trim() : "";
 }
 
 /** Strip legacy datalist values like "ICON-ADP · ICONSIAM - NICHE ADP" → place name only. */
@@ -2653,6 +2694,9 @@ if (typeof window !== "undefined") {
     counterPlaceName: counterPlaceName,
     counterNamesDeduped: counterNamesDeduped,
     mergePinnedPlaceNames: mergePinnedPlaceNames,
+    isClosedPlaceName: isClosedPlaceName,
+    filterClosedPlaceNames: filterClosedPlaceNames,
+    pickOpenPlaceSeed: pickOpenPlaceSeed,
     stripPlaceListLabel: stripPlaceListLabel,
     packingLookupAction: packingLookupAction,
     sortPackingLinesForDisplay: sortPackingLinesForDisplay,

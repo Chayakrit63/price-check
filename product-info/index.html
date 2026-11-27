@@ -760,10 +760,10 @@ body.typing .tabbar{display:none}
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'"></script>
 <!-- Bump ?v= with APP_VER / CatalogCore.VERSION / CamScan.VERSION on every release -->
-<script type="module" src="lib/catalog-core.mjs?v=20261127g"></script>
-<script type="module" src="lib/cam-scan.mjs?v=20261127g"></script>
+<script type="module" src="lib/catalog-core.mjs?v=20261127h"></script>
+<script type="module" src="lib/cam-scan.mjs?v=20261127h"></script>
 <script>
-var APP_VER="20261127g";
+var APP_VER="20261127h";
 var SAMPLE = {updated:"",count:2,rows:[
   ["L3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML","STOCK","EDT","Active","3360374507206"],
   ["T3720002","CACHAREL","ANAIS ANAIS","CACHAREL ANAIS ANAIS EDT 50ML TESTER","TESTER","EDT","Whilest Stock Last","3360374507206"]
@@ -1873,7 +1873,9 @@ var pkResumeAt=0, pkTouched="", pkSheetOpen=false, pkViewBox=null, pkLabelBox=nu
 var PK_BIG_QTY=(window.CatalogCore&&CatalogCore.PK_BIG_QTY)||20;
 var pkUndo=null, pkLastAddSku="", pkLastAddAt=0, pkSaveFail=false;
 var SHIP_PRESETS=["Pullback to Warehouse","Pullback to Office"];
-var PK_PINNED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
+var PK_PINNED_FROM=[];
+/** Closed counters — hide from every pick list (drafts that already use them stay as-is). */
+var PK_CLOSED_FROM=["FM x GD POPUP at Fashion Hall, Siam Paragon 12-22 NOV 2026"];
 var PKSOHMAP="productInfo.posSoh.reportMap", PKSOHLOCAL="productInfo.posSoh.local";
 var PK_SOH={backendOk:null, list:[], cache:{}, local:{}, imp:null, loading:false, last:null, lineFilter:null};
 /** Counter-wide packed qty (other PKs), refreshed via api=packtotals. */
@@ -2453,8 +2455,29 @@ function fillDatalist(id, items){
     dl.appendChild(o);
   });
 }
+function pkFilterClosedFrom(names){
+  if(window.CatalogCore&&CatalogCore.filterClosedPlaceNames)
+    return CatalogCore.filterClosedPlaceNames(names, PK_CLOSED_FROM);
+  var hide={};
+  (PK_CLOSED_FROM||[]).forEach(function(s){var k=String(s||"").trim().toLowerCase(); if(k) hide[k]=1;});
+  return (names||[]).filter(function(raw){
+    var s=String(raw||"").trim(); if(!s) return false;
+    if(hide[s.toLowerCase()]) return false;
+    var place=window.CatalogCore&&CatalogCore.stripPlaceListLabel
+      ?CatalogCore.stripPlaceListLabel(s):stripPlaceListLabelFallback(s);
+    if(place!==s&&hide[String(place).trim().toLowerCase()]) return false;
+    return true;
+  });
+}
+function pkIsClosedFrom(name){
+  if(window.CatalogCore&&CatalogCore.isClosedPlaceName)
+    return CatalogCore.isClosedPlaceName(name, PK_CLOSED_FROM);
+  var k=String(name||"").trim().toLowerCase();
+  if(!k) return false;
+  return (PK_CLOSED_FROM||[]).some(function(s){return String(s||"").trim().toLowerCase()===k;});
+}
 function fillPlaceLists(){
-  if($("sc-ctr-list")) fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
+  if($("sc-ctr-list")) fillDatalist($("sc-ctr-list"), pkFilterClosedFrom((pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;})));
   fillDatalist("ship-list", SHIP_PRESETS.slice());
   var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):[];
   if(!names.length){names=counterNamesDedupedFallback(pkCounters||[]);}
@@ -2469,7 +2492,7 @@ function fillPlaceLists(){
       function add(s){s=String(s||"").trim();if(!s)return;var k=s.toLowerCase();if(seen[k])return;seen[k]=1;out.push(s);}
       (pinned||[]).forEach(add);(rest||[]).forEach(add);return out;
     };
-  fillDatalist("from-list", merge(PK_PINNED_FROM, names.concat(fromHist)));
+  fillDatalist("from-list", pkFilterClosedFrom(merge(PK_PINNED_FROM, names.concat(fromHist))));
 }
 function counterNamesDedupedFallback(counters){
   var seen={},out=[];
@@ -3127,7 +3150,7 @@ function pkOpenCounterCheck(seedCounter){
       Object.keys(PK_SOH.local||{}).forEach(function(k){var c=PK_SOH.local[k]; if(c&&c.counter) fromSoh.push(c.counter);});
       (PK_SOH.list||[]).forEach(function(c){if(c&&c.counter) fromSoh.push(c.counter);});
     }catch(e){}
-    return merge(PK_PINNED_FROM, names.concat(fromSoh));
+    return pkFilterClosedFrom(merge(PK_PINNED_FROM, names.concat(fromSoh)));
   }
   function paintShell(){
     var choices=counterChoices();
@@ -3465,7 +3488,7 @@ function pkRenderSohUi(){
 function fillSohCtrList(){
   var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):counterNamesDedupedFallback(pkCounters||[]);
   var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames?CatalogCore.mergePinnedPlaceNames:function(p,r){return (p||[]).concat(r||[]);};
-  fillDatalist("soh-ctr-list", merge(PK_PINNED_FROM, names));
+  fillDatalist("soh-ctr-list", pkFilterClosedFrom(merge(PK_PINNED_FROM, names)));
 }
 function pkSohNormEntry(entry, counter){
   if(!entry) return null;
@@ -5272,7 +5295,7 @@ function scRenderOver(){
 function scInit(){
   scLoadStore();
   if($("sc-loc")) $("sc-loc").value=SC.loc;
-  fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
+  fillDatalist($("sc-ctr-list"), pkFilterClosedFrom((pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;})));
   $("sc-new").onclick=function(){scForm();};
   $("sc-reload").onclick=function(){scRefreshList($("sc-q").value.trim());};
   $("sc-q").addEventListener("input",function(){clearTimeout(scInit.qt);scInit.qt=setTimeout(function(){scRefreshList($("sc-q").value.trim());},500);});
@@ -5343,7 +5366,7 @@ function scForm(){
   $("sc-f-date").value=d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
   $("sc-f-by").value=scBy();
   $("sc-f-ctr").value="";
-  fillDatalist($("sc-ctr-list"), (pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;}));
+  fillDatalist($("sc-ctr-list"), pkFilterClosedFrom((pkCounters||[]).map(function(c){return (c.code?c.code+" · ":"")+c.name;})));
   scShow("form");
 }
 function scParseCtr(v){
@@ -5994,7 +6017,13 @@ function pkInit(){
   $("pk-new").onclick=function(){pkNewForm(false);};
   if($("pk-soh-open")) $("pk-soh-open").onclick=function(){pkShow("soh");};
   if($("pk-ctr-check-open")) $("pk-ctr-check-open").onclick=function(){
-    var seed=(curBox()&&curBox().from)||PK_PINNED_FROM[0]||"";
+    var from=curBox()&&curBox().from;
+    var names=window.CatalogCore&&CatalogCore.counterNamesDeduped?CatalogCore.counterNamesDeduped(pkCounters||[]):counterNamesDedupedFallback(pkCounters||[]);
+    var merge=window.CatalogCore&&CatalogCore.mergePinnedPlaceNames?CatalogCore.mergePinnedPlaceNames:function(p,r){return (p||[]).concat(r||[]);};
+    var available=pkFilterClosedFrom(merge(PK_PINNED_FROM, names));
+    var seed=window.CatalogCore&&CatalogCore.pickOpenPlaceSeed
+      ?CatalogCore.pickOpenPlaceSeed(from, PK_CLOSED_FROM, available)
+      :(from&&!pkIsClosedFrom(from)?String(from).trim():(available[0]||""));
     pkOpenCounterCheck(seed);
   };
   if($("soh-back")) $("soh-back").onclick=function(){pkShow("home");};
