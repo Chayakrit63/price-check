@@ -19,7 +19,7 @@ export {
   barcodeFormatsForMode,
 };
 
-export var VERSION = "20261127a";
+export var VERSION = "20261127b";
 
 /**
  * Classify a product into STOCK | TESTER | GWPS | OTH for packing / remaining filters.
@@ -1089,11 +1089,353 @@ export function sohLeftoverTypeCounts(rows) {
   return out;
 }
 
+/**
+ * Extract size/weight from a product description (100ML, 100 ML, 50G).
+ * @returns {{ value: number, unit: string, key: string }|null}
+ */
+export function parseItemSize(desc) {
+  var m = /(\d+(?:\.\d+)?)\s*(ML|G)\b/i.exec(String(desc || ""));
+  if (!m) return null;
+  var value = Number(m[1]);
+  if (!isFinite(value) || value <= 0) return null;
+  var unit = String(m[2] || "").toUpperCase();
+  return { value: value, unit: unit, key: String(value) + unit };
+}
+
+var SWAP_DESC_STOP = {
+  EDT: 1,
+  EDP: 1,
+  PERFUME: 1,
+  PARFUM: 1,
+  SPRAY: 1,
+  TESTER: 1,
+  VAPORISATEUR: 1,
+  FLACON: 1,
+  THE: 1,
+  AND: 1,
+  FOR: 1,
+  WITH: 1,
+  ML: 1,
+  ASMB: 1,
+};
+
+/** Significant description tokens for swap matching (size stripped). */
+export function swapDescTokens(desc) {
+  var d = String(desc || "")
+    .toUpperCase()
+    .replace(/(\d+(?:\.\d+)?)\s*(ML|G)\b/gi, " ")
+    .replace(/[^A-Z0-9\u0E00-\u0E7F]+/g, " ")
+    .trim();
+  if (!d) return [];
+  var out = [];
+  var seen = {};
+  d.split(/\s+/).forEach(function (tok) {
+    if (tok.length < 3) return;
+    if (SWAP_DESC_STOP[tok]) return;
+    if (seen[tok]) return;
+    seen[tok] = 1;
+    out.push(tok);
+  });
+  return out;
+}
+
+/**
+ * True when descriptions are "very similar" for swap detection
+ * (shared ≥2 significant tokens, or one long shared token ≥8 chars).
+ */
+export function descsVerySimilar(a, b) {
+  var ta = swapDescTokens(a);
+  var tb = swapDescTokens(b);
+  if (!ta.length || !tb.length) return false;
+  var setB = {};
+  tb.forEach(function (t) {
+    setB[t] = 1;
+  });
+  var shared = 0;
+  var longHit = false;
+  ta.forEach(function (t) {
+    if (!setB[t]) return;
+    shared++;
+    if (t.length >= 8) longHit = true;
+  });
+  return shared >= 2 || longHit;
+}
+
+function counterCheckSwapStatusesOk(sa, sb) {
+  var a = String(sa || "");
+  var b = String(sb || "");
+  if (a === b) return false;
+  var pair = a < b ? a + "|" + b : b + "|" + a;
+  return (
+    pair === "leftover|over" ||
+    pair === "leftover|missing" ||
+    pair === "missing|over"
+  );
+}
+
+function counterCheckSizeKey(row) {
+  if (row && row.size && row.size.key) return row.size.key;
+  var parsed = parseItemSize(row && row.desc);
+  return parsed ? parsed.key : "";
+}
+
+/**
+ * Detect สลับ (swapped) pairs among counter-check rows.
+ * Same barcode (preferred) or very similar description, same size/ML,
+ * different SKU, and complementary issue statuses (short↔over / short↔No POS / over↔No POS).
+ *
+ * @returns {Array<{ a: object, b: object, reason: string, size: string }>}
+ */
+export function detectCounterCheckSwaps(rows) {
+  var list = (rows || []).filter(function (r) {
+    return r && r.sku && r.status && r.status !== "done";
+  });
+  var pairs = [];
+  var used = {};
+
+  function tryPair(i, j, reason) {
+    var a = list[i];
+    var b = list[j];
+    if (!a || !b) return;
+    var sa = String(a.sku).toUpperCase();
+    var sb = String(b.sku).toUpperCase();
+    if (!sa || !sb || sa === sb) return;
+    if (used[sa] || used[sb]) return;
+    if (!counterCheckSwapStatusesOk(a.status, b.status)) return;
+    var ka = counterCheckSizeKey(a);
+    var kb = counterCheckSizeKey(b);
+    if (!ka || !kb || ka !== kb) return;
+    used[sa] = 1;
+    used[sb] = 1;
+    pairs.push({ a: a, b: b, reason: reason, size: ka });
+  }
+
+  // 1) Same barcode groups
+  var byBc = {};
+  list.forEach(function (r, idx) {
+    var bc = String(r.barcode || "")
+      .replace(/\s+/g, "")
+      .trim();
+    if (!bc) return;
+    if (!byBc[bc]) byBc[bc] = [];
+    byBc[bc].push(idx);
+  });
+  Object.keys(byBc).forEach(function (bc) {
+    var idxs = byBc[bc];
+    if (idxs.length < 2) return;
+    for (var i = 0; i < idxs.length; i++) {
+      for (var j = i + 1; j < idxs.length; j++) {
+        tryPair(idxs[i], idxs[j], "barcode");
+      }
+    }
+  });
+
+  // 2) Similar description + same size (rows not already paired)
+  for (var i = 0; i < list.length; i++) {
+    var a = list[i];
+    var sa = String(a.sku || "").toUpperCase();
+    if (!sa || used[sa]) continue;
+    for (var j = i + 1; j < list.length; j++) {
+      var b = list[j];
+      var sb = String(b.sku || "").toUpperCase();
+      if (!sb || used[sb]) continue;
+      if (!descsVerySimilar(a.desc, b.desc)) continue;
+      tryPair(i, j, "desc");
+    }
+  }
+
+  return pairs;
+}
+
+/**
+ * Annotate counter-check rows with type / size / swap partner.
+ * Does not change existing status meanings (leftover|over|missing|done).
+ */
+export function enrichCounterCheck(check) {
+  if (!check) return null;
+  var rows = (check.rows || []).map(function (r) {
+    var size = parseItemSize(r.desc);
+    return Object.assign({}, r, {
+      type: String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase(),
+      size: size,
+      swapWith: "",
+      swapNote: "",
+      swapped: false,
+    });
+  });
+  var bySku = {};
+  rows.forEach(function (r) {
+    bySku[String(r.sku || "").toUpperCase()] = r;
+  });
+  var pairs = detectCounterCheckSwaps(rows);
+  pairs.forEach(function (p) {
+    var a = bySku[String(p.a.sku || "").toUpperCase()];
+    var b = bySku[String(p.b.sku || "").toUpperCase()];
+    if (!a || !b) return;
+    a.swapWith = String(b.sku);
+    a.swapNote = "สลับกับ " + b.sku;
+    a.swapped = true;
+    b.swapWith = String(a.sku);
+    b.swapNote = "สลับกับ " + a.sku;
+    b.swapped = true;
+  });
+  function slice(status) {
+    return rows.filter(function (r) {
+      return r.status === status;
+    });
+  }
+  var swappedRows = rows.filter(function (r) {
+    return r.swapped;
+  });
+  var totals = Object.assign({}, check.totals || {}, {
+    swappedSku: swappedRows.length,
+    swappedPairs: pairs.length,
+  });
+  return Object.assign({}, check, {
+    rows: rows,
+    leftover: slice("leftover"),
+    over: slice("over"),
+    missing: slice("missing"),
+    done: slice("done"),
+    swapped: swappedRows,
+    swapPairs: pairs,
+    totals: totals,
+  });
+}
+
+function counterCheckRowQty(r) {
+  if (!r) return 0;
+  if (r.status === "leftover") return Number(r.left) || 0;
+  if (r.status === "over") return Number(r.over) || 0;
+  if (r.status === "missing") return Number(r.packed) || 0;
+  return 0;
+}
+
+/** Type chip counts for counter-check rows (SKU · discrepancy qty). */
+export function counterCheckTypeCounts(rows) {
+  var out = {
+    ALL: { sku: 0, qty: 0 },
+    STOCK: { sku: 0, qty: 0 },
+    TESTER: { sku: 0, qty: 0 },
+    GWPS: { sku: 0, qty: 0 },
+    OTH: { sku: 0, qty: 0 },
+  };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    var q = counterCheckRowQty(r);
+    var t = String(r.type || rowTypeBucket(r) || "STOCK").toUpperCase();
+    if (t === "OTHER") t = "OTH";
+    if (!out[t]) t = "OTH";
+    out.ALL.sku += 1;
+    out.ALL.qty += q;
+    out[t].sku += 1;
+    out[t].qty += q;
+  });
+  return out;
+}
+
+/**
+ * Issue chip counts (ขาด/เกิน/No POS/ครบ/สลับ) within a row set.
+ * @returns {{ ALL, leftover, over, missing, done, swapped }}
+ */
+export function counterCheckIssueCounts(rows) {
+  var out = {
+    ALL: { sku: 0, qty: 0 },
+    leftover: { sku: 0, qty: 0 },
+    over: { sku: 0, qty: 0 },
+    missing: { sku: 0, qty: 0 },
+    done: { sku: 0, qty: 0 },
+    swapped: { sku: 0, qty: 0 },
+  };
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    var q = counterCheckRowQty(r);
+    out.ALL.sku += 1;
+    out.ALL.qty += q;
+    var st = String(r.status || "");
+    if (out[st]) {
+      out[st].sku += 1;
+      out[st].qty += q;
+    }
+    if (r.swapped) {
+      out.swapped.sku += 1;
+      out.swapped.qty += q;
+    }
+  });
+  return out;
+}
+
+/**
+ * Filter counter-check rows by search / brand / typeCat / issueCat.
+ * issueCat: ALL|leftover|over|missing|done|swapped (ขาด=leftover, No POS=missing, สลับ=swapped).
+ */
+export function filterCounterCheckRows(rows, opts) {
+  opts = opts || {};
+  var q = String(opts.query != null ? opts.query : opts.q || "")
+    .trim()
+    .toLowerCase();
+  var b = String(opts.brand || "")
+    .trim()
+    .toLowerCase();
+  var tc = String(opts.typeCat || "ALL")
+    .trim()
+    .toUpperCase();
+  if (tc === "OTHER") tc = "OTH";
+  var ic = String(opts.issueCat || opts.tab || "ALL")
+    .trim()
+    .toLowerCase();
+  if (ic === "ขาด" || ic === "short") ic = "leftover";
+  if (ic === "เกิน") ic = "over";
+  if (ic === "nopos" || ic === "no_pos" || ic === "no pos") ic = "missing";
+  if (ic === "ครบ" || ic === "ok") ic = "done";
+  if (ic === "สลับ" || ic === "swap") ic = "swapped";
+  return (rows || []).filter(function (r) {
+    if (!r) return false;
+    if (tc && tc !== "ALL") {
+      var t = String(r.type || rowTypeBucket(r) || "").toUpperCase();
+      if (t === "OTHER") t = "OTH";
+      if (t !== tc) return false;
+    }
+    if (ic && ic !== "all") {
+      if (ic === "swapped") {
+        if (!r.swapped) return false;
+      } else if (String(r.status || "") !== ic) {
+        return false;
+      }
+    }
+    if (b && String(r.brand || "").toLowerCase() !== b) return false;
+    if (!q) return true;
+    var hay = (
+      String(r.sku || "") +
+      " " +
+      String(r.barcode || "") +
+      " " +
+      String(r.desc || "") +
+      " " +
+      String(r.brand || "") +
+      " " +
+      String(r.swapWith || "")
+    ).toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+}
+
+export function packingCounterCheckIssueLabel(issue) {
+  var ic = String(issue || "").toLowerCase();
+  if (ic === "leftover") return "ขาด";
+  if (ic === "over") return "เกิน";
+  if (ic === "missing") return "No POS";
+  if (ic === "done") return "ครบ";
+  if (ic === "swapped") return "สลับ";
+  return packingCounterCheckStatusLabel(issue);
+}
+
 export function packingCounterCheckStatusLabel(status) {
   if (status === "leftover") return "ยังไม่แพ็ค";
   if (status === "over") return "เกิน";
   if (status === "missing") return "ไม่มีใน POS";
   if (status === "done") return "ครบ";
+  if (status === "swapped") return "สลับ";
   return String(status || "");
 }
 
@@ -1153,6 +1495,8 @@ export function packingCounterCheckExportStamp(date, timeZone) {
 
 var CTR_CHECK_ALL_HEADERS = [
   "Status",
+  "Group",
+  "Issue",
   "Brand",
   "SKU",
   "Barcode",
@@ -1161,8 +1505,12 @@ var CTR_CHECK_ALL_HEADERS = [
   "Packed",
   "Left",
   "Over",
+  "Swap",
   "PK nos",
 ];
+
+var CTR_CHECK_SKU_TEXT_COLS = [4, 5]; // SKU, Barcode
+var CTR_CHECK_SKU_COLS = [12, 10, 10, 14, 14, 16, 40, 10, 10, 10, 10, 18, 28];
 
 /**
  * Pure workbook payload for Counter check Excel export (no SheetJS).
@@ -1177,6 +1525,8 @@ var CTR_CHECK_ALL_HEADERS = [
  *   exportedAt?: Date|string|number,
  *   stamp?: string,
  *   includeStatusSheets?: boolean,
+ *   filter?: { query?: string, brand?: string, typeCat?: string, issueCat?: string },
+ *   viewRows?: Array,
  * }} opts
  */
 export function buildCounterCheckExcelData(opts) {
@@ -1191,6 +1541,12 @@ export function buildCounterCheckExcelData(opts) {
   var short = packingCounterCheckShortName(counter);
   var fileName = "CounterCheck_" + short + "_" + stamp + ".xlsx";
   var t = check.totals;
+  var filter = opts.filter || null;
+  var viewRows =
+    opts.viewRows ||
+    (filter
+      ? filterCounterCheckRows(check.rows || [], filter)
+      : check.rows || []);
 
   var pkSet = {};
   bundles.forEach(function (b) {
@@ -1207,6 +1563,18 @@ export function buildCounterCheckExcelData(opts) {
     return n.indexOf("(เปิด") === 0;
   })) {
     // open draft may use real boxNo already in list; note separately in summary
+  }
+
+  var filterNote = "";
+  if (filter) {
+    var bits = [];
+    if (filter.typeCat && String(filter.typeCat).toUpperCase() !== "ALL")
+      bits.push("Group=" + String(filter.typeCat).toUpperCase());
+    if (filter.issueCat && String(filter.issueCat).toLowerCase() !== "all")
+      bits.push("Issue=" + packingCounterCheckIssueLabel(filter.issueCat));
+    if (filter.brand) bits.push("Brand=" + filter.brand);
+    if (filter.query || filter.q) bits.push("Search=" + (filter.query || filter.q));
+    filterNote = bits.length ? bits.join("; ") : "All";
   }
 
   var summaryAoa = [
@@ -1227,11 +1595,22 @@ export function buildCounterCheckExcelData(opts) {
     ["Over pcs", t.overPcs],
     ["Not-in-POS SKU", t.missingSku],
     ["Not-in-POS pcs", t.missingPcs || 0],
+    ["Swapped SKU", t.swappedSku || 0],
+    ["Active filters", filterNote || "—"],
+    ["Filtered SKU rows", viewRows.length],
   ];
 
   function skuRow(r) {
+    var group = String(r.type || rowTypeBucket(r) || "").toUpperCase();
+    if (group === "OTHER") group = "OTH";
+    var issue = packingCounterCheckIssueLabel(r.status);
+    if (r.swapped && String(r.status) !== "done") {
+      issue = issue + " · สลับ";
+    }
     return [
       packingCounterCheckStatusLabel(r.status),
+      group,
+      issue,
       String(r.brand || ""),
       String(r.sku || ""),
       String(r.barcode || ""),
@@ -1240,12 +1619,12 @@ export function buildCounterCheckExcelData(opts) {
       Number(r.packed) || 0,
       Number(r.left) || 0,
       Number(r.over) || 0,
+      String(r.swapNote || r.swapWith || ""),
       (r.boxNos || []).join(", "),
     ];
   }
 
-  var allRows = (check.rows || []).map(skuRow);
-  var allAoa = [CTR_CHECK_ALL_HEADERS.slice()].concat(allRows);
+  var allAoa = [CTR_CHECK_ALL_HEADERS.slice()].concat(viewRows.map(skuRow));
 
   var byPkAoa = [["PK no", "Box", "SKU", "Barcode", "Description", "Brand", "Qty"]];
   bundles.forEach(function (b) {
@@ -1280,10 +1659,10 @@ export function buildCounterCheckExcelData(opts) {
     {
       name: "All SKUs",
       aoa: allAoa,
-      textCols: [2, 3],
+      textCols: CTR_CHECK_SKU_TEXT_COLS.slice(),
       freeze: true,
       autofilter: true,
-      cols: [12, 14, 14, 16, 40, 10, 10, 10, 10, 28],
+      cols: CTR_CHECK_SKU_COLS.slice(),
     },
     {
       name: "By PK",
@@ -1301,15 +1680,24 @@ export function buildCounterCheckExcelData(opts) {
       { key: "over", name: "เกิน" },
       { key: "missing", name: "ไม่มีใน POS" },
       { key: "done", name: "ครบ" },
+      { key: "swapped", name: "สลับ" },
     ].forEach(function (s) {
       var list = check[s.key] || [];
+      if (filter) {
+        list = filterCounterCheckRows(list, Object.assign({}, filter, { issueCat: "ALL" }));
+        if (s.key !== "swapped" && filter.issueCat && String(filter.issueCat).toLowerCase() !== "all") {
+          var want = String(filter.issueCat).toLowerCase();
+          if (want === "swapped") list = list.filter(function (r) { return r.swapped; });
+          else if (s.key !== want) list = [];
+        }
+      }
       sheets.push({
         name: s.name,
         aoa: [CTR_CHECK_ALL_HEADERS.slice()].concat(list.map(skuRow)),
-        textCols: [2, 3],
+        textCols: CTR_CHECK_SKU_TEXT_COLS.slice(),
         freeze: true,
         autofilter: true,
-        cols: [12, 14, 14, 16, 40, 10, 10, 10, 10, 28],
+        cols: CTR_CHECK_SKU_COLS.slice(),
       });
     });
   }
@@ -1732,6 +2120,15 @@ if (typeof window !== "undefined") {
     packingSohSummary: packingSohSummary,
     filterSohLeftover: filterSohLeftover,
     sohLeftoverTypeCounts: sohLeftoverTypeCounts,
+    parseItemSize: parseItemSize,
+    swapDescTokens: swapDescTokens,
+    descsVerySimilar: descsVerySimilar,
+    detectCounterCheckSwaps: detectCounterCheckSwaps,
+    enrichCounterCheck: enrichCounterCheck,
+    counterCheckTypeCounts: counterCheckTypeCounts,
+    counterCheckIssueCounts: counterCheckIssueCounts,
+    filterCounterCheckRows: filterCounterCheckRows,
+    packingCounterCheckIssueLabel: packingCounterCheckIssueLabel,
     packingCounterCheck: packingCounterCheck,
     packingCounterCheckStatusLabel: packingCounterCheckStatusLabel,
     packingCounterCheckShortName: packingCounterCheckShortName,
